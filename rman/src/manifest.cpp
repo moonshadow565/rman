@@ -139,13 +139,27 @@ namespace {
                 auto size = copy.read_raw<int32_t>();
                 auto start = copy.tell();
                 for (auto i = 0; i != size; i++) {
-                    auto offset = start + i * 4;
-                    copy.seek_abs(offset);
-                    offset += copy.read_raw<int32_t>();
-                    copy.seek_abs(offset);
+                    auto ptr_offset = start + i * 4;
+                    copy.seek_abs(ptr_offset);
+                    ptr_offset += copy.read_raw<int32_t>();
+                    copy.seek_abs(ptr_offset);
                     results.push_back(parser(copy));
                 }
                 return results;
+            }
+
+            template<typename Func>
+            inline auto ptr(Func parser) const && {
+                using func_result_type = decltype(parser(Reader{}));
+                if (!offset) {
+                    return func_result_type{};
+                }
+                Reader copy = reader;
+                copy.seek_rel(offset);
+                auto ptr_offset = copy.tell();
+                ptr_offset += copy.read_raw<int32_t>();
+                copy.seek_abs(ptr_offset);
+                return parser(copy);
             }
 
             explicit inline operator bool() const noexcept {
