@@ -5,7 +5,7 @@ project(fuckingmanifestdownloader LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package (CURL REQUIRED COMPONENTS HTTP)
+find_package (CURL COMPONENTS HTTP)
 
 add_subdirectory(rman)
 
