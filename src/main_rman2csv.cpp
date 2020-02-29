@@ -10,12 +10,22 @@ int main(int argc, char** argv) {
 #else
     std::string input = argc > 1 ? argv[1] : "manifest.manifest";
 #endif
+    std::string filter = argc > 2 ? argv[2] : "";
+    std::string lang = argc > 3 ? argv[3] : "en_US";
     try {
         if (input.empty()) {
-            throw std::runtime_error("./rman2csv <manifest file>");
+            throw std::runtime_error("./rman2csv <manifest file> "
+                                     "<optional: regex filter, default empty> "
+                                     "<optional lang filter, default: en_US> ");
         }
         auto manifest = Manifest::read(input.c_str());
         auto info = ManifestInfo::from_manifest(manifest);
+        if (!filter.empty()) {
+            info = info.filter_path(filter);
+        }
+        if (!lang.empty()) {
+            info = info.filter_lang(lang);
+        }
         puts(info.to_csv().c_str());
     } catch (std::exception const& error) {
         fputs(error.what(), stderr);
