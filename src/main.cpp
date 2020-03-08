@@ -140,9 +140,9 @@ int main(int argc, char ** argv) {
     auto main = Main{};
     try {
         main.parse_args(argc, argv);
-        main.init_downloader();
         main.parse_manifest();
         main.parse_upgrade();
+        main.init_downloader();
         main.process();
     } catch (std::exception const& e) {
         std::cerr << e.what() << std::endl;

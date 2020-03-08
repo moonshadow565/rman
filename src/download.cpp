@@ -12,6 +12,7 @@ namespace fs = std::filesystem;
 HttpClient rman::make_httpclient(std::string const& address) {
     auto httpclient = std::make_shared<httplib::Client>(address);
     rman_assert(httpclient != nullptr);
+    httpclient->set_keep_alive_max_count(0);
     return httpclient;
 }
 
@@ -43,7 +44,7 @@ FileDownload FileDownload::from_file_info(FileInfo const& info, std::string cons
 }
 
 bool FileDownload::write(size_t start_chunk, size_t end_chunk,
-                         std::string const& data, bool multi) noexcept {
+                         std::string_view data, bool multi) noexcept {
     auto chunk_id = ChunkID::None;
     auto buffer = std::vector<char>();
     buffer.reserve((size_t)params.max_uncompressed);
@@ -81,6 +82,7 @@ size_t FileDownload::download(HttpClient& client, std::string const& prefix) noe
     auto last_chunk_id = ChunkID::None;
     int32_t total_size = 0;
     bool multi = false;
+    std::vector<char> buffer = {};
     for (auto i = start_bundle; i != chunks.size();) {
         if (chunks[i].id != last_chunk_id) {
             if (!range.empty()) {
@@ -99,14 +101,18 @@ size_t FileDownload::download(HttpClient& client, std::string const& prefix) noe
         if (i == chunks.size() || chunks[i].bundle_id != chunks[start_bundle].bundle_id) {
             auto bundle_id = chunks[start_bundle].bundle_id;
             auto path = prefix + "/bundles/" + to_hex(bundle_id) + ".bundle";
-            auto result = client->Get(path.c_str(), {{ "Range", range }});
-            if (!result) {
-                return {};
-            }
-            if (result->body.size() < (size_t)total_size) {
+            buffer.clear();
+            buffer.reserve((size_t)total_size);
+            client->Get(path.c_str(), {{ "Range", range }},
+                        [&buffer](char const* data, size_t size) -> bool {
+                buffer.insert(buffer.end(), data, data + size);
+                return true;
+            });
+            buffer.push_back('\0');
+            if (buffer.size() < (size_t)total_size) {
                 return start_bundle;
             }
-            if(!write(start_bundle, i, result->body, multi)) {
+            if(!write(start_bundle, i, {buffer.data(), buffer.size()}, multi)) {
                 return start_bundle;
             }
             start_bundle = i;

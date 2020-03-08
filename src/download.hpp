@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <map>
 #include <fstream>
+#include <string_view>
 
 namespace httplib {
     class Client;
@@ -23,7 +24,7 @@ namespace rman {
         size_t download(HttpClient& client, std::string const& prefix) noexcept;
     private:
         bool write(size_t start_chunk, size_t end_chunk,
-                   std::string const& data, bool multi) noexcept;
+                   std::string_view data, bool multi) noexcept;
     };
 }
 
