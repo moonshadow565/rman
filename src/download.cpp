@@ -82,7 +82,8 @@ size_t FileDownload::download(HttpClient& client, std::string const& prefix) noe
     auto last_chunk_id = ChunkID::None;
     int32_t total_size = 0;
     bool multi = false;
-    std::vector<char> buffer = {};
+    std::vector<char> inbuffer = {};
+    size_t finished = 0;
     for (auto i = start_bundle; i != chunks.size();) {
         if (chunks[i].id != last_chunk_id) {
             if (!range.empty()) {
@@ -101,19 +102,18 @@ size_t FileDownload::download(HttpClient& client, std::string const& prefix) noe
         if (i == chunks.size() || chunks[i].bundle_id != chunks[start_bundle].bundle_id) {
             auto bundle_id = chunks[start_bundle].bundle_id;
             auto path = prefix + "/bundles/" + to_hex(bundle_id) + ".bundle";
-            buffer.clear();
-            buffer.reserve((size_t)total_size);
+            inbuffer.clear();
+            inbuffer.reserve((size_t)total_size);
             client->Get(path.c_str(), {{ "Range", range }},
-                        [&buffer](char const* data, size_t size) -> bool {
-                buffer.insert(buffer.end(), data, data + size);
+                        [&inbuffer](char const* data, size_t size) -> bool {
+                inbuffer.insert(inbuffer.end(), data, data + size);
                 return true;
             });
-            buffer.push_back('\0');
-            if (buffer.size() < (size_t)total_size) {
-                return start_bundle;
-            }
-            if(!write(start_bundle, i, {buffer.data(), buffer.size()}, multi)) {
-                return start_bundle;
+            inbuffer.push_back('\0');
+            if (inbuffer.size() >= (size_t)total_size) {
+                if(write(start_bundle, i, {inbuffer.data(), inbuffer.size()}, multi)) {
+                    finished += i - start_bundle;
+                }
             }
             start_bundle = i;
             range.clear();
@@ -122,5 +122,5 @@ size_t FileDownload::download(HttpClient& client, std::string const& prefix) noe
             multi = false;
         }
     }
-    return chunks.size();
+    return finished;
 }
