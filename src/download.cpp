@@ -12,8 +12,54 @@ namespace fs = std::filesystem;
 HttpClient rman::make_httpclient(std::string const& address) {
     auto httpclient = std::make_shared<httplib::Client>(address);
     rman_assert(httpclient != nullptr);
-    httpclient->set_keep_alive_max_count(0);
     return httpclient;
+}
+
+std::vector<char> BundleDownload::download(HttpClient &client,
+                                           std::string const& prefix) const noexcept {
+    std::vector<char> inbuffer = {};
+    inbuffer.reserve(total_size + 64 * chunks.size());
+    auto path = prefix + "/bundles/" + to_hex(id) + ".bundle";
+    auto result = client->Get(path.c_str(), {{ "Range", range }},
+                [&inbuffer](char const* data, size_t size) -> bool {
+        inbuffer.insert(inbuffer.end(), data, data + size);
+        return true;
+    });
+    inbuffer.push_back('\0');
+    return inbuffer;
+}
+
+bool BundleDownload::write(std::ofstream &file, std::vector<char> inbuffer) const noexcept {
+    if (inbuffer.size() < total_size) {
+        return false;
+    }
+    auto outbuffer = std::vector<char>();
+    outbuffer.reserve(max_uncompressed);
+    auto data_cur = inbuffer.data();
+    auto data_end = inbuffer.data() + inbuffer.size();
+    for (auto const& chunk: chunks) {
+        if (chunks.size() > 1) {
+            auto c = strstr(data_cur, "\r\n\r\n");
+            if (c) {
+                data_cur = c + 4;
+            }
+        }
+        if ((data_end - data_cur) < chunk.compressed_size) {
+            return false;
+        }
+        outbuffer.resize((size_t)chunk.uncompressed_size);
+        auto result = ZSTD_decompress(outbuffer.data(), outbuffer.size(),
+                                      data_cur, (size_t)chunk.compressed_size);
+        if (ZSTD_isError(result) || result != outbuffer.size()) {
+            return false;
+        }
+        for (auto offset: chunk.offsets) {
+            file.seekp(offset);
+            file.write(outbuffer.data(), outbuffer.size());
+        }
+        data_cur += chunk.compressed_size;
+    }
+    return true;
 }
 
 FileDownload FileDownload::from_file_info(FileInfo const& info, std::string const& output) {
@@ -29,97 +75,54 @@ FileDownload FileDownload::from_file_info(FileInfo const& info, std::string cons
         }
     }
     auto result = FileDownload{};
-    result.file = std::make_unique<std::ofstream>(path, std::ios::binary | std::ios::ate);
+    result.file = std::make_unique<std::ofstream>(path, std::ios::binary | std::ios::ate | std::ios::in);
     rman_assert(result.file->good());
-    result.params = info.params;
-    result.chunks = info.chunks;
-    std::sort(result.chunks.begin(), result.chunks.end(),
+    auto chunks = info.chunks;
+    std::sort(chunks.begin(), chunks.end(),
               [](FileChunk const& l, FileChunk const& r) {
         using wrap_t = std::tuple<BundleID, int32_t, int32_t>;
         auto left = wrap_t {l.bundle_id, l.uncompressed_offset, l.compressed_offset};
         auto right = wrap_t {r.bundle_id, r.uncompressed_offset, r.compressed_offset};
         return left < right;
     });
+    BundleDownload* bundle = {};
+    auto bundle_id = BundleID::None;
+    ChunkDownload* chunk = {};
+    auto chunk_id = ChunkID::None;
+    for(auto const& i: chunks) {
+        if (i.bundle_id != bundle_id) {
+            bundle = &result.bundles.emplace_back();
+            bundle->id = i.bundle_id;
+            bundle_id = i.bundle_id;
+            chunk_id = ChunkID::None;
+        }
+        if (i.id != chunk_id) {
+            if (!bundle->range.empty()) {
+                bundle->range += ", ";
+            } else {
+                bundle->range += "bytes=";
+            }
+            bundle->range += std::to_string(i.compressed_offset);
+            bundle->range += "-";
+            bundle->range += std::to_string(i.compressed_offset + i.compressed_size - 1);
+            bundle->total_size += (size_t)i.compressed_size;
+            bundle->max_uncompressed = std::max(bundle->max_uncompressed,
+                                                (size_t)i.uncompressed_size);
+            chunk = &bundle->chunks.emplace_back(ChunkDownload{i, {}});
+            chunk_id = i.id;
+        }
+        chunk->offsets.push_back(i.uncompressed_offset);
+        bundle->offset_count++;
+    }
     return result;
 }
 
-bool FileDownload::write(size_t start_chunk, size_t end_chunk,
-                         std::string_view data, bool multi) noexcept {
-    auto chunk_id = ChunkID::None;
-    auto buffer = std::vector<char>();
-    buffer.reserve((size_t)params.max_uncompressed);
-    auto start_data = data.data();
-    auto end_data = start_data + data.size();
-    for (auto i = start_chunk; i != end_chunk; i++) {
-        if (chunks[i].id != chunk_id) {
-            if (multi) {
-                auto c = strstr(start_data, "\r\n\r\n");
-                if (c) {
-                    start_data = c + 4;
-                }
-            }
-            if ((end_data - start_data) < chunks[i].compressed_size) {
-                return false;
-            }
-            buffer.resize((size_t)chunks[i].uncompressed_size);
-            auto result = ZSTD_decompress(buffer.data(), buffer.size(),
-                                          start_data, (size_t)chunks[i].compressed_size);
-            if (ZSTD_isError(result) || result != buffer.size()) {
-                return false;
-            }
-            start_data += chunks[i].compressed_size;
-            chunk_id = chunks[i].id;
-        }
-        file->seekp(chunks[i].uncompressed_offset);
-        file->write(buffer.data(), buffer.size());
-    }
-    return true;
-}
-
 size_t FileDownload::download(HttpClient& client, std::string const& prefix) noexcept {
-    std::string range = "";
-    auto start_bundle = size_t{0};
-    auto last_chunk_id = ChunkID::None;
-    int32_t total_size = 0;
-    bool multi = false;
-    std::vector<char> inbuffer = {};
     size_t finished = 0;
-    for (auto i = start_bundle; i != chunks.size();) {
-        if (chunks[i].id != last_chunk_id) {
-            if (!range.empty()) {
-                range += ", ";
-                multi = true;
-            } else {
-                range += "bytes=";
-            }
-            range += std::to_string(chunks[i].compressed_offset);
-            range += "-";
-            range += std::to_string(chunks[i].compressed_offset + chunks[i].compressed_size - 1);
-            last_chunk_id = chunks[i].id;
-            total_size += chunks[i].compressed_size;
-        }
-        ++i;
-        if (i == chunks.size() || chunks[i].bundle_id != chunks[start_bundle].bundle_id) {
-            auto bundle_id = chunks[start_bundle].bundle_id;
-            auto path = prefix + "/bundles/" + to_hex(bundle_id) + ".bundle";
-            inbuffer.clear();
-            inbuffer.reserve((size_t)total_size);
-            client->Get(path.c_str(), {{ "Range", range }},
-                        [&inbuffer](char const* data, size_t size) -> bool {
-                inbuffer.insert(inbuffer.end(), data, data + size);
-                return true;
-            });
-            inbuffer.push_back('\0');
-            if (inbuffer.size() >= (size_t)total_size) {
-                if(write(start_bundle, i, {inbuffer.data(), inbuffer.size()}, multi)) {
-                    finished += i - start_bundle;
-                }
-            }
-            start_bundle = i;
-            range.clear();
-            last_chunk_id = ChunkID::None;
-            total_size = 0;
-            multi = false;
+    for(auto const& bundle: bundles) {
+        auto inbuffer = bundle.download(client, prefix);
+        if (bundle.write(*file, std::move(inbuffer))) {
+            finished += bundle.offset_count;
         }
     }
     return finished;
