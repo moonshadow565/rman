@@ -411,15 +411,13 @@ bool FileInfo::remove_verified(std::string const& folder_name) noexcept {
 }
 
 bool FileInfo::remove_uptodate(FileInfo const& old_file) noexcept {
-    using key_t = std::tuple<int32_t, int32_t, ChunkID>;
+    using key_t = std::pair<int32_t, ChunkID>;
     auto old_lookup = std::set<key_t>{};
     for(auto const& old: old_file.chunks) {
-        auto key = key_t{old.uncompressed_offset, old.uncompressed_offset, old.id};
-        old_lookup.insert(key);
+        old_lookup.insert({old.uncompressed_offset, old.id});
     }
     remove_if(chunks, [&](FileChunk const& chunk) {
-        auto key = key_t{chunk.uncompressed_offset, chunk.uncompressed_offset, chunk.id};
-        return old_lookup.find(key) != old_lookup.end();
+        return old_lookup.find({chunk.uncompressed_offset, chunk.id}) != old_lookup.end();
     });
     return old_file.chunks.empty();
 }
