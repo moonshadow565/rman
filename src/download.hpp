@@ -28,7 +28,7 @@ namespace rman {
         size_t offset_count = {};
         size_t max_uncompressed = {};
         std::vector<char> download(HttpClient& client, std::string const& prefix) const noexcept;
-        bool write(std::ofstream& file, std::vector<char> inbuffer) const noexcept;
+        size_t write(std::ofstream& file, std::vector<char> inbuffer) const noexcept;
     };
 
     struct FileDownload {

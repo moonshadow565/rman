@@ -4,6 +4,7 @@ project(fckrman LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package (CURL COMPONENTS HTTP)
+find_package (Threads REQUIRED)
 
 add_subdirectory(zstd)
 add_subdirectory(httplib)
@@ -24,5 +25,5 @@ add_executable(fckrman
     src/manifest.cpp
     src/main.cpp
 )
-target_link_libraries(fckrman PRIVATE zstd httplib)
+target_link_libraries(fckrman PRIVATE zstd httplib Threads::Threads)
 target_include_directories(fckrman PRIVATE include/)

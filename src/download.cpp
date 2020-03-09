@@ -1,6 +1,8 @@
 #include "download.hpp"
 #include "error.hpp"
 #include <iterator>
+#include <future>
+#include <thread>
 using namespace rman;
 namespace fs = std::filesystem;
 /// Curl include
@@ -29,14 +31,15 @@ std::vector<char> BundleDownload::download(HttpClient &client,
     return inbuffer;
 }
 
-bool BundleDownload::write(std::ofstream &file, std::vector<char> inbuffer) const noexcept {
+size_t BundleDownload::write(std::ofstream &file, std::vector<char> inbuffer) const noexcept {
     if (inbuffer.size() < total_size) {
-        return false;
+        return 0;
     }
     auto outbuffer = std::vector<char>();
     outbuffer.reserve(max_uncompressed);
     auto data_cur = inbuffer.data();
     auto data_end = inbuffer.data() + inbuffer.size();
+    size_t finished = 0;
     for (auto const& chunk: chunks) {
         if (chunks.size() > 1) {
             auto c = strstr(data_cur, "\r\n\r\n");
@@ -45,21 +48,22 @@ bool BundleDownload::write(std::ofstream &file, std::vector<char> inbuffer) cons
             }
         }
         if ((data_end - data_cur) < chunk.compressed_size) {
-            return false;
+            break;
         }
         outbuffer.resize((size_t)chunk.uncompressed_size);
         auto result = ZSTD_decompress(outbuffer.data(), outbuffer.size(),
                                       data_cur, (size_t)chunk.compressed_size);
         if (ZSTD_isError(result) || result != outbuffer.size()) {
-            return false;
+            break;
         }
         for (auto offset: chunk.offsets) {
             file.seekp(offset);
             file.write(outbuffer.data(), outbuffer.size());
+            finished++;
         }
         data_cur += chunk.compressed_size;
     }
-    return true;
+    return finished;
 }
 
 FileDownload FileDownload::from_file_info(FileInfo const& info, std::string const& output) {
@@ -119,11 +123,10 @@ FileDownload FileDownload::from_file_info(FileInfo const& info, std::string cons
 
 size_t FileDownload::download(HttpClient& client, std::string const& prefix) noexcept {
     size_t finished = 0;
-    for(auto const& bundle: bundles) {
+    for (auto const& bundle: bundles) {
         auto inbuffer = bundle.download(client, prefix);
-        if (bundle.write(*file, std::move(inbuffer))) {
-            finished += bundle.offset_count;
-        }
+        auto f = bundle.write(*file, std::move(inbuffer));
+        finished += f;
     }
     return finished;
 }
