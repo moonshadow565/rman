@@ -7,14 +7,20 @@
 #include <fstream>
 #include <string_view>
 
-namespace httplib {
-    class Client;
-}
-
 namespace rman {
-    using HttpClient = std::shared_ptr<httplib::Client>;
-    extern HttpClient make_httpclient(std::string const& address);
+    struct HttpClientHandleDeleter {
+        void operator()(void* handle) const noexcept;
+    };
 
+    struct HttpClient {
+        std::string prefix;
+        std::unique_ptr<std::vector<char>> buffer;
+        std::unique_ptr<void, HttpClientHandleDeleter> handle;
+        bool download(std::string const& path, std::string const& range) noexcept;
+
+        inline HttpClient() noexcept = default;
+        HttpClient(std::string url);
+    };
 
     struct ChunkDownload : FileChunk {
         std::vector<int32_t> offsets = {};
@@ -24,18 +30,17 @@ namespace rman {
         BundleID id = {};
         std::vector<ChunkDownload> chunks = {};
         std::string range = {};
+        std::string path = {};
         size_t total_size = {};
         size_t offset_count = {};
         size_t max_uncompressed = {};
-        std::vector<char> download(HttpClient& client, std::string const& prefix) const noexcept;
-        size_t write(std::ofstream& file, std::vector<char> inbuffer) const noexcept;
+        bool download(HttpClient& client, std::ofstream &file) const noexcept;
     };
 
-    struct FileDownload {
-        std::unique_ptr<std::ofstream> file = {};
+    struct BundleDownloadList {
         std::vector<BundleDownload> bundles = {};
 
-        static FileDownload from_file_info(FileInfo const& info, std::string const& output);
+        static BundleDownloadList from_file_info(FileInfo const& info) noexcept;
         size_t download(HttpClient& client, std::string const& prefix) noexcept;
     private:
     };

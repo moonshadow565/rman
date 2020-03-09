@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <optional>
 #include <regex>
+#include <fstream>
 
 namespace rman {
     template <typename T>
@@ -46,6 +47,7 @@ namespace rman {
 
         std::string to_csv() const noexcept;
         std::string to_json(int indent) const noexcept;
+        std::ofstream create_file(std::string const& folder_name) const;
         bool remove_exist(std::string const& folder_name) noexcept;
         bool remove_verified(std::string const& folder_name) noexcept;
         bool remove_uptodate(FileInfo const& old) noexcept;

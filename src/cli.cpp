@@ -4,8 +4,7 @@
 #include <argparse.hpp>
 using namespace rman;
 
-static inline constexpr auto DEFAULT_URL = "lol.secure.dyn.riotcdn.net";
-static inline constexpr auto DEFAULT_PREFIX = "/channels/public";
+static inline constexpr auto DEFAULT_URL = "http://lol.secure.dyn.riotcdn.net/channels/public";
 
 void CLI::parse(int argc, char ** argv) {
     argparse::ArgumentParser program("fckrman");
@@ -42,28 +41,13 @@ void CLI::parse(int argc, char ** argv) {
             .implicit_value(std::optional<int>{-1});
     program.add_argument("-d", "--download")
             .help("Url: to download from.")
-            .default_value(std::optional<Url>{})
-            .implicit_value(std::optional<Url> { Url { DEFAULT_URL, DEFAULT_PREFIX } })
-            .action([](std::string value) -> std::optional<Url> {
-                if (auto http = value.find("http://"); http == 0) {
-                    value = value.substr(6, value.size() - 6);
-                } else if (auto https = value.find("http://"); https == 0) {
-                    value = value.substr(7, value.size() - 6);
-                }
-                while(value.size() && value.back() == '/') {
-                    value.pop_back();
-                }
+            .default_value(std::optional<std::string>{})
+            .implicit_value(std::optional<std::string> { DEFAULT_URL })
+            .action([](std::string value) -> std::optional<std::string> {
                 if (!value.size()) {
                     throw std::runtime_error("Url can't be empty");
                 }
-                auto result = Url {};
-                if (auto prefix = value.find('/'); prefix != std::string::npos) {
-                    result.address = value.substr(0, prefix);
-                    result.prefix = value.substr(prefix, value.size() - prefix);
-                } else {
-                    result.address = value;
-                }
-                return result;
+                return value;
             });
     program.add_argument("-o", "--output")
             .help("Directory: output")
@@ -76,7 +60,7 @@ void CLI::parse(int argc, char ** argv) {
     path = program.get<std::optional<std::regex>>("-p");
     json = program.get<std::optional<int>>("-j");
     upgrade = program.get<std::string>("-u");
-    download = program.get<std::optional<Url>>("-d");
+    download = program.get<std::optional<std::string>>("-d");
     output = program.get<std::string>("-o");
 }
 

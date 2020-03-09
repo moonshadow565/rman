@@ -5,41 +5,116 @@
 #include <thread>
 using namespace rman;
 namespace fs = std::filesystem;
-/// Curl include
-#define NOMINMAX
 #include <zstd.h>
-#include <httplib.h>
-/// End curl include
-
-HttpClient rman::make_httpclient(std::string const& address) {
-    auto httpclient = std::make_shared<httplib::Client>(address);
-    rman_assert(httpclient != nullptr);
-    return httpclient;
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifdef FCKRMAN_CURL
+#include <curl/curl.h>
+void HttpClientHandleDeleter::operator()(void *handle) const noexcept {
+    curl_easy_cleanup(handle);
 }
 
-std::vector<char> BundleDownload::download(HttpClient &client,
-                                           std::string const& prefix) const noexcept {
-    std::vector<char> inbuffer = {};
-    inbuffer.reserve(total_size + 64 * chunks.size());
-    auto path = prefix + "/bundles/" + to_hex(id) + ".bundle";
-    auto result = client->Get(path.c_str(), {{ "Range", range }},
-                [&inbuffer](char const* data, size_t size) -> bool {
-        inbuffer.insert(inbuffer.end(), data, data + size);
+static size_t write_data(void *ptr, size_t size, size_t nmemb, std::vector<char> *buffer) noexcept {
+    buffer->insert(buffer->end(), (char const*)ptr, (char const*)ptr + size * nmemb);
+    return size * nmemb;
+}
+
+HttpClient::HttpClient(std::string url) {
+    struct CurlInit {
+        CurlInit() {
+            curl_global_init(CURL_GLOBAL_ALL);
+        }
+        ~CurlInit() {
+            curl_global_cleanup();
+        }
+    };
+    static auto init = CurlInit{};
+    while (url.size() && url.back() == '/') {
+        url.pop_back();
+    }
+    prefix = url;
+    buffer = std::make_unique<std::vector<char>>();
+    handle = std::unique_ptr<void, HttpClientHandleDeleter>(curl_easy_init());
+    curl_easy_setopt(handle.get(), CURLOPT_VERBOSE, 0L);
+    curl_easy_setopt(handle.get(), CURLOPT_NOPROGRESS, 1L);
+    curl_easy_setopt(handle.get(), CURLOPT_WRITEFUNCTION, &write_data);
+    curl_easy_setopt(handle.get(), CURLOPT_WRITEDATA, buffer.get());
+}
+
+bool HttpClient::download(std::string const& path, std::string const& range) noexcept {
+    auto target = prefix + path;
+    curl_easy_setopt(handle.get(), CURLOPT_URL, target.c_str());
+    curl_easy_setopt(handle.get(), CURLOPT_RANGE, range.c_str());
+    curl_easy_perform(handle.get());
+    return true;
+}
+#else
+#include <httplib.h>
+void HttpClientHandleDeleter::operator()(void *handle) const noexcept {
+    if (handle) {
+        auto client = (httplib::Client*)handle;
+        delete client;
+    }
+}
+
+HttpClient::HttpClient(std::string url) {
+    if (auto http = url.find("http://"); http == 0) {
+        url = url.substr(7, url.size() - 7);
+    } else if (auto https = url.find("https://"); https == 0) {
+        url = url.substr(8, url.size() - 8);
+    } else {
+        throw_error(__func__, "Url must start with either http:// or https://");
+    }
+    while (url.size() && url.back() == '/') {
+        url.pop_back();
+    }
+    if (auto extra = url.find('/'); extra != std::string::npos) {
+        prefix = url.substr(extra, url.size() - extra);
+        url = url.substr(0, extra);
+    }
+    int port = 80;
+    if (auto colon = url.find(':'); colon != std::string::npos) {
+        port = std::stoi(url.substr(colon + 1, url.size() - colon - 1));
+        rman_assert(port > 0 && port < 65536);
+        url = url.substr(0, colon);
+    }
+    rman_assert(url.size());
+    buffer = std::make_unique<std::vector<char>>();
+    handle = std::unique_ptr<void, HttpClientHandleDeleter>(new httplib::Client(url, port));
+}
+
+bool HttpClient::download(std::string const& path, std::string const& range) noexcept {
+    auto target = prefix + path;
+    auto client = (httplib::Client*)handle.get();
+    auto inbuffer = buffer.get();
+    auto result = client->Get(target.c_str(), {{"Range", "bytes=" + range}},
+                              [inbuffer](char const* data, size_t size) -> bool {
+        inbuffer->insert(inbuffer->end(), data, data + size);
         return true;
     });
-    inbuffer.push_back('\0');
-    return inbuffer;
+    return true;
 }
+#endif
 
-size_t BundleDownload::write(std::ofstream &file, std::vector<char> inbuffer) const noexcept {
-    if (inbuffer.size() < total_size) {
-        return 0;
+bool BundleDownload::download(HttpClient& client, std::ofstream &file) const noexcept {
+    auto& inbuffer = *client.buffer;
+    inbuffer.clear();
+    inbuffer.reserve(total_size + 64 * chunks.size());
+    if (!client.download(path, range)) {
+        return false;
     }
+    if (inbuffer.size() < total_size) {
+        return false;
+    }
+    inbuffer.push_back('\0');
     auto outbuffer = std::vector<char>();
     outbuffer.reserve(max_uncompressed);
     auto data_cur = inbuffer.data();
     auto data_end = inbuffer.data() + inbuffer.size();
-    size_t finished = 0;
     for (auto const& chunk: chunks) {
         if (chunks.size() > 1) {
             auto c = strstr(data_cur, "\r\n\r\n");
@@ -48,63 +123,47 @@ size_t BundleDownload::write(std::ofstream &file, std::vector<char> inbuffer) co
             }
         }
         if ((data_end - data_cur) < chunk.compressed_size) {
-            break;
+            return false;
         }
         outbuffer.resize((size_t)chunk.uncompressed_size);
         auto result = ZSTD_decompress(outbuffer.data(), outbuffer.size(),
                                       data_cur, (size_t)chunk.compressed_size);
         if (ZSTD_isError(result) || result != outbuffer.size()) {
-            break;
+            return false;
         }
         for (auto offset: chunk.offsets) {
             file.seekp(offset);
             file.write(outbuffer.data(), outbuffer.size());
-            finished++;
         }
         data_cur += chunk.compressed_size;
     }
-    return finished;
+    return true;
 }
 
-FileDownload FileDownload::from_file_info(FileInfo const& info, std::string const& output) {
-    auto path = fs::path(output) / fs::path(info.path, fs::path::generic_format);
-    auto folder = path.parent_path();
-    if (!fs::exists(folder)) {
-        rman_rethrow(fs::create_directories(folder));
-    }
-    if (fs::exists(path)) {
-        auto size = rman_rethrow(fs::file_size(path));
-        if (size > INT32_MAX || (int32_t)size != info.size) {
-            rman_rethrow(fs::resize_file(path, (uint32_t)info.size));
-        }
-    }
-    auto result = FileDownload{};
-    result.file = std::make_unique<std::ofstream>(path, std::ios::binary | std::ios::ate | std::ios::in);
-    rman_assert(result.file->good());
+BundleDownloadList BundleDownloadList::from_file_info(FileInfo const& info) noexcept {
     auto chunks = info.chunks;
-    std::sort(chunks.begin(), chunks.end(),
-              [](FileChunk const& l, FileChunk const& r) {
+    std::sort(chunks.begin(), chunks.end(), [](FileChunk const& l, FileChunk const& r) {
         using wrap_t = std::tuple<BundleID, int32_t, int32_t>;
         auto left = wrap_t {l.bundle_id, l.uncompressed_offset, l.compressed_offset};
         auto right = wrap_t {r.bundle_id, r.uncompressed_offset, r.compressed_offset};
         return left < right;
     });
+    auto bundles = std::vector<BundleDownload>{};
     BundleDownload* bundle = {};
     auto bundle_id = BundleID::None;
     ChunkDownload* chunk = {};
     auto chunk_id = ChunkID::None;
     for(auto const& i: chunks) {
         if (i.bundle_id != bundle_id) {
-            bundle = &result.bundles.emplace_back();
+            bundle = &bundles.emplace_back();
             bundle->id = i.bundle_id;
+            bundle->path = "/bundles/" + to_hex(i.bundle_id) + ".bundle";
             bundle_id = i.bundle_id;
             chunk_id = ChunkID::None;
         }
         if (i.id != chunk_id) {
             if (!bundle->range.empty()) {
                 bundle->range += ", ";
-            } else {
-                bundle->range += "bytes=";
             }
             bundle->range += std::to_string(i.compressed_offset);
             bundle->range += "-";
@@ -118,15 +177,5 @@ FileDownload FileDownload::from_file_info(FileInfo const& info, std::string cons
         chunk->offsets.push_back(i.uncompressed_offset);
         bundle->offset_count++;
     }
-    return result;
-}
-
-size_t FileDownload::download(HttpClient& client, std::string const& prefix) noexcept {
-    size_t finished = 0;
-    for (auto const& bundle: bundles) {
-        auto inbuffer = bundle.download(client, prefix);
-        auto f = bundle.write(*file, std::move(inbuffer));
-        finished += f;
-    }
-    return finished;
+    return {bundles};
 }

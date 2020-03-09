@@ -6,11 +6,6 @@
 #include <regex>
 
 namespace rman {
-    struct Url {
-        std::string address;
-        std::string prefix;
-    };
-
     struct CLI {
         std::string manifest = {};
         bool verify = {};
@@ -19,7 +14,7 @@ namespace rman {
         std::vector<std::string> langs = {};
         std::optional<int> json = {};
         std::string upgrade = {};
-        std::optional<Url> download = {};
+        std::optional<std::string> download = {};
         std::string output = {};
 
         void parse(int argc, char ** argv);

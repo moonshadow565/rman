@@ -346,6 +346,25 @@ void FileList::sanitize() const {
 
 /// Integrity verifcation functions
 
+std::ofstream FileInfo::create_file(const std::string &folder_name) const {
+    auto dest = fs::path(folder_name) / fs::path(path, fs::path::generic_format);
+    auto folder = dest.parent_path();
+    if (!fs::exists(folder)) {
+        rman_rethrow(fs::create_directories(folder));
+    }
+    if (!fs::exists(dest)) {
+        auto make_file = std::ofstream(dest, std::ios::binary);
+        rman_assert(make_file.good());
+    }
+    auto exist_size = rman_rethrow(fs::file_size(dest));
+    if (exist_size > INT32_MAX || (int32_t)exist_size != size) {
+        rman_rethrow(fs::resize_file(path, (uint32_t)size));
+    }
+    auto file = std::ofstream(dest, std::ios::binary | std::ios::ate | std::ios::in);
+    rman_assert(file.good());
+    return file;
+}
+
 bool FileChunk::verify(std::vector<uint8_t> const& buffer, HashType type) const noexcept {
     std::array<uint8_t, 64> output = {};
     switch(type) {

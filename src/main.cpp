@@ -26,7 +26,7 @@ struct Main {
 
     void init_downloader() {
         if (cli.download) {
-            httpclient = make_httpclient(cli.download->address);
+            httpclient = HttpClient(*cli.download);
         }
     }
 
@@ -70,31 +70,27 @@ struct Main {
     void print_header() noexcept {
         if (cli.download) {
             std::cerr << "Download started..." << std::endl;
-        }
-        if (cli.json) {
+        } else if (cli.json) {
             std::cout << "[" << std::endl;
-        } else if (!cli.download) {
+        } else {
             std::cout << "path,size,id,lang" << std::endl;
         }
     }
 
     void download_file(FileInfo const& file) {
-        std::cerr << "Start: " << file.path << std::endl;
-        auto download = FileDownload::from_file_info(file, cli.output);
-        auto result = download.download(httpclient, cli.download->prefix);
-        if (result == file.chunks.size()) {
-            std::cerr << "OK!" << std::endl;
-        } else {
-            if (cli.json) {
-                if (!need_separator) {
-                    need_separator = true;
-                    std::cerr << file.to_json(*cli.json) << std::endl;
-                } else {
-                    std::cerr << ',' << file.to_json(*cli.json) << std::endl;
-                }
+        std::cout << "File: " << file.path << std::endl;
+        auto outfile = file.create_file(cli.output);
+        auto bundles = BundleDownloadList::from_file_info(file);
+        size_t total = bundles.bundles.size();
+        size_t finished = 0;
+        std::cout << '\r' << "Bundles: " << finished << '/' << total << std::flush;
+        for(auto const& bundle: bundles.bundles) {
+            if (bundle.download(httpclient, outfile)) {
+                finished++;
             }
-            std::cerr << "FAILED!" << std::endl;
+            std::cout << '\r' << "Bundles: " << finished << '/' << total << std::flush;
         }
+        std::cout << ' ' << (total == finished ? "OK!" : "ERROR!") << std::endl;
     }
 
     bool need_separator = false;
@@ -113,9 +109,8 @@ struct Main {
 
     void print_footer() noexcept {
         if (cli.download) {
-            std::cerr << "Finished!" << std::endl;
-        }
-        if (cli.json) {
+            std::cout << "Finished!" << std::endl;
+        } else if (cli.json) {
             std::cout << ']' << std::endl;
         }
     }
