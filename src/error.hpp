@@ -12,12 +12,13 @@
             ::rman::throw_error(__func__, ": " #__VA_ARGS__);   \
         }                                                       \
     } while(false)
-#define rman_rethrow(...) [&, func = __func__] () -> decltype(auto) {   \
-        try {                                                           \
-            return __VA_ARGS__;                                         \
-        } catch(std::exception const& e) {                              \
-            ::rman::throw_error(func, ": " #__VA_ARGS__);               \
-        }                                                               \
+#define rman_rethrow(...)                                 \
+    [&, func = __func__]() -> decltype(auto) {            \
+        try {                                             \
+            return __VA_ARGS__;                           \
+        } catch (std::exception const &) {                \
+            ::rman::throw_error(func, ": " #__VA_ARGS__); \
+        }                                                 \
     }()
 #define rman_trace(...) ::rman::ErrorTrace rman_paste(_trace_,__LINE__) {   \
         [&] { ::rman::push_error_msg(__VA_ARGS__); }                        \

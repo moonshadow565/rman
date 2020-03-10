@@ -75,8 +75,8 @@ namespace rman {
         info.id = from_hex<FileID>(j.at("id"));
         info.path = j.at("path");
         info.size = j.at("size");
-        info.langs = static_cast<std::unordered_set<std::string>>(j.at("langs"));
-        info.chunks = static_cast<std::vector<FileChunk>>(j.at("chunks"));
+        j.at("langs").get_to(info.langs);
+        j.at("chunks").get_to(info.chunks);
         info.link = j.at("link");
         info.permissions = j.at("permissions");
         info.params.unk0 = j.at("unk0");
@@ -198,7 +198,7 @@ FileList FileList::from_manifest(RManifest const &manifest) {
         }
         file_info.path = path.generic_string();
         for(size_t i = 0; i != 32; i++) {
-            if (file.locale_flags & (1u << i)) {
+            if (file.locale_flags & (1ull << i)) {
                 rman_trace("LangID: %u", (unsigned int)i);
                 auto const& lang = rman_rethrow(lang_lookup.at((LangID)(i + 1)));
                 file_info.langs.insert(lang);
@@ -367,7 +367,9 @@ std::ofstream FileInfo::create_file(const std::string &folder_name) const {
 
 bool FileChunk::verify(std::vector<uint8_t> const& buffer, HashType type) const noexcept {
     std::array<uint8_t, 64> output = {};
-    switch(type) {
+    switch (type) {
+    case HashType::None:
+        return false;
     case HashType::SHA512:
         SHA512(buffer.data(), buffer.size(), output.data());
         break;
@@ -377,8 +379,6 @@ bool FileChunk::verify(std::vector<uint8_t> const& buffer, HashType type) const 
     case HashType::RITO_HKDF:
         RITO_HKDF(buffer.data(), buffer.size(), output.data());
         break;
-    default:
-        return false;
     }
     return memcmp(output.data(), &id, sizeof(ChunkID)) == 0;
 }
@@ -417,7 +417,7 @@ bool FileInfo::remove_verified(std::string const& folder_name) noexcept {
         buffer.resize((size_t)chunk.uncompressed_size);
         infile.clear();
         infile.seekg(chunk.uncompressed_offset, std::ios::beg);
-        infile.read((char*)buffer.data(), buffer.size());
+        infile.read((char *)buffer.data(), (std::streamsize)buffer.size());
         if (chunk.verify(buffer, params.hash_type)) {
             return true;
         }
