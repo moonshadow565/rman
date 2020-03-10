@@ -8,6 +8,21 @@ static inline constexpr auto DEFAULT_URL = "http://lol.secure.dyn.riotcdn.net/ch
 
 void CLI::parse(int argc, char ** argv) {
     argparse::ArgumentParser program("fckrman");
+    program.add_argument("action")
+            .help("action: list, download, json")
+            .required()
+            .action([](std::string const& value){
+                if (value == "list" || value == "ls") {
+                    return Action::List;
+                }
+                if (value == "json" || value == "js") {
+                    return Action::Json;
+                }
+                if (value == "download" || value == "dl") {
+                    return Action::Download;
+                }
+                throw std::runtime_error("Unknown action!");
+            });
     program.add_argument("manifest")
             .required()
             .help(".manifest or .json");
@@ -35,41 +50,29 @@ void CLI::parse(int argc, char ** argv) {
     program.add_argument("-u", "--update")
             .help("Filter: update from old manifest.")
             .default_value(std::string(""));
-    program.add_argument("-j", "--json")
-            .help("Json: print json instead of csv")
-            .default_value(std::optional<int>{})
-            .implicit_value(std::optional<int>{-1});
     program.add_argument("-r", "--retry")
             .help("Number of retrys for failed bundles")
             .default_value(uint32_t{0})
-            .implicit_value(uint32_t{1})
             .action([](std::string const& value) -> uint32_t {
                 auto result = std::stoul(value);
                 return result;
             });
     program.add_argument("-d", "--download")
             .help("Url: to download from.")
-            .default_value(std::optional<std::string>{})
-            .implicit_value(std::optional<std::string> { DEFAULT_URL })
-            .action([](std::string value) -> std::optional<std::string> {
-                if (!value.size()) {
-                    throw std::runtime_error("Url can't be empty");
-                }
-                return value;
-            });
+            .default_value(std::string(DEFAULT_URL));
     program.add_argument("-o", "--output")
             .help("Directory: output")
             .default_value(std::string("."));
     program.parse_args(argc, argv);
     manifest = program.get<std::string>("manifest");
+    action = program.get<Action>("action");
     verify = program.get<bool>("-v");
     exist = program.get<bool>("-e");
     langs = program.get<std::vector<std::string>>("-l");
     path = program.get<std::optional<std::regex>>("-p");
-    json = program.get<std::optional<int>>("-j");
     upgrade = program.get<std::string>("-u");
     retry = program.get<uint32_t>("-r");
-    download = program.get<std::optional<std::string>>("-d");
+    download = program.get<std::string>("-d");
     output = program.get<std::string>("-o");
 }
 

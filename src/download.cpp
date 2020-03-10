@@ -103,7 +103,7 @@ bool HttpClient::download(std::string const& path, std::string const& range) noe
 bool BundleDownload::download(HttpClient& client, std::ofstream &file) const noexcept {
     auto& inbuffer = *client.buffer;
     inbuffer.clear();
-    inbuffer.reserve(total_size + 64 * chunks.size());
+    inbuffer.reserve(total_size + 128 * chunks.size());
     if (!client.download(path, range)) {
         return false;
     }
@@ -144,8 +144,8 @@ BundleDownloadList BundleDownloadList::from_file_info(FileInfo const& info) noex
     auto chunks = info.chunks;
     std::sort(chunks.begin(), chunks.end(), [](FileChunk const& l, FileChunk const& r) {
         using wrap_t = std::tuple<BundleID, int32_t, int32_t>;
-        auto left = wrap_t {l.bundle_id, l.uncompressed_offset, l.compressed_offset};
-        auto right = wrap_t {r.bundle_id, r.uncompressed_offset, r.compressed_offset};
+        auto left = wrap_t{l.bundle_id, l.compressed_offset, l.uncompressed_offset};
+        auto right = wrap_t{r.bundle_id, r.compressed_offset, r.uncompressed_offset};
         return left < right;
     });
     auto bundles = std::list<BundleDownload>{};

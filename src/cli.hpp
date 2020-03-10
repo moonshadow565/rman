@@ -6,16 +6,22 @@
 #include <regex>
 
 namespace rman {
+    enum class Action {
+        List,
+        Json,
+        Download,
+    };
+
     struct CLI {
+        Action action = {};
         std::string manifest = {};
         bool verify = {};
         bool exist = {};
         std::optional<std::regex> path = {};
         std::vector<std::string> langs = {};
-        std::optional<int> json = {};
         std::string upgrade = {};
         uint32_t retry = {};
-        std::optional<std::string> download = {};
+        std::string download = {};
         std::string output = {};
 
         void parse(int argc, char ** argv);

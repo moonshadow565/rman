@@ -9,12 +9,6 @@
 using namespace rman;
 
 struct Main {
-    Main(CLI const&) = delete;
-    Main(CLI&&) = delete;
-    Main& operator=(Main const&) = delete;
-    Main& operator=(Main&&) = delete;
-    ~Main() noexcept {}
-
     CLI cli = {};
     FileList manifest = {};
     std::optional<FileList> upgrade = {};
@@ -25,8 +19,8 @@ struct Main {
     }
 
     void init_downloader() {
-        if (cli.download) {
-            httpclient = HttpClient(*cli.download);
+        if (cli.action == Action::Download) {
+            httpclient = HttpClient(cli.download);
         }
     }
 
@@ -58,22 +52,31 @@ struct Main {
             if (cli.verify && file.remove_verified(cli.output)) {
                 continue;
             }
-            if (cli.download) {
+            switch(cli.action) {
+            case Action::List:
+                print_csv(file);
+                break;
+            case Action::Json:
+                print_json(file);
+                break;
+            case Action::Download:
                 download_file(file);
-            } else {
-                print_file(file);
+                break;
             }
         }
         print_footer();
     }
 
     void print_header() noexcept {
-        if (cli.download) {
-            std::cerr << "Download started..." << std::endl;
-        } else if (cli.json) {
+        switch(cli.action) {
+        case Action::List:
+            break;
+        case Action::Json:
             std::cout << "[" << std::endl;
-        } else {
-            std::cout << "path,size,id,lang" << std::endl;
+            break;
+        case Action::Download:
+            std::cout << "Download started..." << std::endl;
+            break;
         }
     }
 
@@ -84,10 +87,6 @@ struct Main {
         size_t total = bundles.bundles.size();
         size_t finished = 0;
         for (uint32_t tried = 0; !bundles.bundles.empty() && tried <= cli.retry; tried++) {
-            std::cout << '\r'
-                      << "Try: " << tried << ' '
-                      << "Bundles: " << finished
-                      << '/' << total << std::flush;
             bundles.bundles.remove_if([&](BundleDownload const& bundle){
                 auto result = bundle.download(httpclient, outfile);
                 if (result) {
@@ -103,25 +102,30 @@ struct Main {
         std::cout << ' ' << (total == finished ? "OK!" : "ERROR!") << std::endl;
     }
 
+    void print_csv(FileInfo const& file) noexcept {
+        std::cout << file.to_csv() << std::endl;
+    }
+
     bool need_separator = false;
-    void print_file(FileInfo const& file) noexcept {
-        if (cli.json) {
-            if (!need_separator) {
-                need_separator = true;
-                std::cout << file.to_json(*cli.json) << std::endl;
-            } else {
-                std::cout << ',' << file.to_json(*cli.json) << std::endl;
-            }
+    void print_json(FileInfo const& file) noexcept {
+        if (!need_separator) {
+            need_separator = true;
+            std::cout << file.to_json(2) << std::endl;
         } else {
-            std::cout << file.to_csv() << std::endl;
+            std::cout << ',' << file.to_json(2) << std::endl;
         }
     }
 
     void print_footer() noexcept {
-        if (cli.download) {
-            std::cout << "Finished!" << std::endl;
-        } else if (cli.json) {
+        switch(cli.action) {
+        case Action::List:
+            break;
+        case Action::Json:
             std::cout << ']' << std::endl;
+            break;
+        case Action::Download:
+            std::cout << "Finished!" << std::endl;
+            break;
         }
     }
 
