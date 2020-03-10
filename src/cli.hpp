@@ -15,6 +15,7 @@ namespace rman {
     struct CLI {
         Action action = {};
         std::string manifest = {};
+        bool curl_verbose = {};
         bool verify = {};
         bool exist = {};
         std::optional<std::regex> path = {};

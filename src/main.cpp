@@ -18,12 +18,6 @@ struct Main {
         cli.parse(argc, argv);
     }
 
-    void init_downloader() {
-        if (cli.action == Action::Download) {
-            httpclient = HttpClient(cli.download);
-        }
-    }
-
     void parse_manifest() {
         rman_trace("Manifest file: %s", cli.manifest.c_str());
         manifest = FileList::read(read_file(cli.manifest));
@@ -44,7 +38,20 @@ struct Main {
     }
 
     void process() {
-        print_header();
+        switch(cli.action) {
+        case Action::List:
+            action_list();
+            break;
+        case Action::Json:
+            action_json();
+            break;
+        case Action::Download:
+            action_download();
+            break;
+        }
+    }
+
+    void action_list() noexcept {
         for(auto& file: manifest.files) {
             if (cli.exist && file.remove_exist(cli.output)) {
                 continue;
@@ -52,41 +59,56 @@ struct Main {
             if (cli.verify && file.remove_verified(cli.output)) {
                 continue;
             }
-            switch(cli.action) {
-            case Action::List:
-                print_csv(file);
-                break;
-            case Action::Json:
-                print_json(file);
-                break;
-            case Action::Download:
-                download_file(file);
-                break;
-            }
+            std::cout << file.to_csv() << std::endl;
         }
-        print_footer();
     }
 
-    void print_header() noexcept {
-        switch(cli.action) {
-        case Action::List:
-            break;
-        case Action::Json:
-            std::cout << "[" << std::endl;
-            break;
-        case Action::Download:
-            std::cout << "Download started..." << std::endl;
-            break;
+    void action_json() noexcept {
+        std::cout << '[' << std::endl;
+        bool need_separator = false;
+        for(auto& file: manifest.files) {
+            if (cli.exist && file.remove_exist(cli.output)) {
+                continue;
+            }
+            if (cli.verify && file.remove_verified(cli.output)) {
+                continue;
+            }
+            if (!need_separator) {
+                need_separator = true;
+                std::cout << file.to_json(2) << std::endl;
+            } else {
+                std::cout << ',' << file.to_json(2) << std::endl;
+            }
+        }
+        std::cout << ']' << std::endl;
+    }
+
+    void action_download() {
+        httpclient = HttpClient(cli.download, cli.curl_verbose);
+        for(auto& file: manifest.files) {
+            std::cout << "File: " << file.path << std::endl;
+            if (cli.exist && file.remove_exist(cli.output)) {
+                std::cout << "SKIP!" << std::endl;
+                continue;
+            }
+            if (cli.verify && file.remove_verified(cli.output)) {
+                std::cout << "VERIFIED!" << std::endl;
+                continue;
+            }
+            download_file(file);
         }
     }
 
     void download_file(FileInfo const& file) {
-        std::cout << "File: " << file.path << std::endl;
         auto outfile = file.create_file(cli.output);
         auto bundles = BundleDownloadList::from_file_info(file);
         size_t total = bundles.bundles.size();
         size_t finished = 0;
         for (uint32_t tried = 0; !bundles.bundles.empty() && tried <= cli.retry; tried++) {
+            std::cout << '\r'
+                      << "Try: " << tried << ' '
+                      << "Bundles: " << finished
+                      << '/' << total << std::flush;
             bundles.bundles.remove_if([&](BundleDownload const& bundle){
                 auto result = bundle.download(httpclient, outfile);
                 if (result) {
@@ -100,33 +122,6 @@ struct Main {
             });
         }
         std::cout << ' ' << (total == finished ? "OK!" : "ERROR!") << std::endl;
-    }
-
-    void print_csv(FileInfo const& file) noexcept {
-        std::cout << file.to_csv() << std::endl;
-    }
-
-    bool need_separator = false;
-    void print_json(FileInfo const& file) noexcept {
-        if (!need_separator) {
-            need_separator = true;
-            std::cout << file.to_json(2) << std::endl;
-        } else {
-            std::cout << ',' << file.to_json(2) << std::endl;
-        }
-    }
-
-    void print_footer() noexcept {
-        switch(cli.action) {
-        case Action::List:
-            break;
-        case Action::Json:
-            std::cout << ']' << std::endl;
-            break;
-        case Action::Download:
-            std::cout << "Finished!" << std::endl;
-            break;
-        }
     }
 
     static std::vector<char> read_file(std::string const& filename) {
@@ -151,7 +146,6 @@ int main(int argc, char ** argv) {
         main.parse_args(argc, argv);
         main.parse_manifest();
         main.parse_upgrade();
-        main.init_downloader();
         main.process();
     } catch (std::exception const& e) {
         std::cerr << e.what() << std::endl;

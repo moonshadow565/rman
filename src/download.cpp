@@ -1,8 +1,7 @@
 #include "download.hpp"
 #include "error.hpp"
 #include <iterator>
-#include <future>
-#include <thread>
+#include <iostream>
 using namespace rman;
 namespace fs = std::filesystem;
 #include <zstd.h>
@@ -23,7 +22,7 @@ static size_t write_data(void *ptr, size_t size, size_t nmemb, std::vector<char>
     return size * nmemb;
 }
 
-HttpClient::HttpClient(std::string url) {
+HttpClient::HttpClient(std::string url, bool verbose) {
     struct CurlInit {
         CurlInit() {
             curl_global_init(CURL_GLOBAL_ALL);
@@ -39,7 +38,7 @@ HttpClient::HttpClient(std::string url) {
     prefix = url;
     buffer = std::make_unique<std::vector<char>>();
     handle = std::unique_ptr<void, HttpClientHandleDeleter>(curl_easy_init());
-    curl_easy_setopt(handle.get(), CURLOPT_VERBOSE, 0L);
+    curl_easy_setopt(handle.get(), CURLOPT_VERBOSE, (verbose ? 1L : 0L));
     curl_easy_setopt(handle.get(), CURLOPT_NOPROGRESS, 1L);
     curl_easy_setopt(handle.get(), CURLOPT_WRITEFUNCTION, &write_data);
     curl_easy_setopt(handle.get(), CURLOPT_WRITEDATA, buffer.get());
@@ -61,7 +60,7 @@ void HttpClientHandleDeleter::operator()(void *handle) const noexcept {
     }
 }
 
-HttpClient::HttpClient(std::string url) {
+HttpClient::HttpClient(std::string url, bool verbose) {
     if (auto http = url.find("http://"); http == 0) {
         url = url.substr(7, url.size() - 7);
     } else if (auto https = url.find("https://"); https == 0) {
@@ -85,6 +84,20 @@ HttpClient::HttpClient(std::string url) {
     rman_assert(url.size());
     buffer = std::make_unique<std::vector<char>>();
     handle = std::unique_ptr<void, HttpClientHandleDeleter>(new httplib::Client(url, port));
+    if (verbose) {
+        auto client = (httplib::Client*)handle.get();
+        client->set_logger([](httplib::Request const& req, httplib::Response const& res){
+           std::cerr << std::endl;
+           std::cerr << "> " << req.method << ' ' << req.path << std::endl;
+           for(auto const& header: req.headers) {
+               std::cerr << header.first << ':' << header.second << std::endl;
+           }
+           std::cerr << "< " << res.status << std::endl;
+           for(auto const& header: res.headers) {
+               std::cerr << "< " << header.first << ':' << header.second << std::endl;
+           }
+        });
+    }
 }
 
 bool HttpClient::download(std::string const& path, std::string const& range) noexcept {
@@ -133,7 +146,7 @@ bool BundleDownload::download(HttpClient& client, std::ofstream &file) const noe
         }
         for (auto offset: chunk.offsets) {
             file.seekp(offset);
-            file.write(outbuffer.data(), outbuffer.size());
+            file.write(outbuffer.data(), (std::streamsize)outbuffer.size());
         }
         data_cur += chunk.compressed_size;
     }

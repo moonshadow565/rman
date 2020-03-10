@@ -20,7 +20,7 @@ namespace rman {
         bool download(std::string const& path, std::string const& range) noexcept;
 
         inline HttpClient() noexcept = default;
-        HttpClient(std::string url);
+        HttpClient(std::string url, bool verbose);
     };
 
     struct ChunkDownload : FileChunk {

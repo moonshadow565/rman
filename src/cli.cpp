@@ -26,6 +26,10 @@ void CLI::parse(int argc, char ** argv) {
     program.add_argument("manifest")
             .required()
             .help(".manifest or .json");
+    program.add_argument("--curl-verbose")
+            .help("Curl debuging")
+            .default_value(false)
+            .implicit_value(true);
     program.add_argument("-v", "--verify")
             .help("Skip: verified chunks")
             .default_value(false)
@@ -66,6 +70,7 @@ void CLI::parse(int argc, char ** argv) {
     program.parse_args(argc, argv);
     manifest = program.get<std::string>("manifest");
     action = program.get<Action>("action");
+    curl_verbose = program.get<bool>("--curl-verbose");
     verify = program.get<bool>("-v");
     exist = program.get<bool>("-e");
     langs = program.get<std::vector<std::string>>("-l");
