@@ -49,7 +49,7 @@ struct Main {
         }
     }
 
-    void process() noexcept {
+    void process() {
         print_header();
         for(auto& file: manifest.files) {
             if (cli.exist && file.remove_exist(cli.output)) {

@@ -358,7 +358,7 @@ std::ofstream FileInfo::create_file(const std::string &folder_name) const {
     }
     auto exist_size = rman_rethrow(fs::file_size(dest));
     if (exist_size > INT32_MAX || (int32_t)exist_size != size) {
-        rman_rethrow(fs::resize_file(path, (uint32_t)size));
+        rman_rethrow(fs::resize_file(dest, (uint32_t)size));
     }
     auto file = std::ofstream(dest, std::ios::binary | std::ios::ate | std::ios::in);
     rman_assert(file.good());
