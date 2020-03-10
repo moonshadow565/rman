@@ -148,7 +148,7 @@ BundleDownloadList BundleDownloadList::from_file_info(FileInfo const& info) noex
         auto right = wrap_t {r.bundle_id, r.uncompressed_offset, r.compressed_offset};
         return left < right;
     });
-    auto bundles = std::vector<BundleDownload>{};
+    auto bundles = std::list<BundleDownload>{};
     BundleDownload* bundle = {};
     auto bundle_id = BundleID::None;
     ChunkDownload* chunk = {};

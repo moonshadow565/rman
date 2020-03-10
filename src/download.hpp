@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <map>
 #include <fstream>
+#include <list>
 #include <string_view>
 
 namespace rman {
@@ -38,11 +39,10 @@ namespace rman {
     };
 
     struct BundleDownloadList {
-        std::vector<BundleDownload> bundles = {};
+        std::list<BundleDownload> bundles = {};
 
         static BundleDownloadList from_file_info(FileInfo const& info) noexcept;
         size_t download(HttpClient& client, std::string const& prefix) noexcept;
-    private:
     };
 }
 

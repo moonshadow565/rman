@@ -39,6 +39,14 @@ void CLI::parse(int argc, char ** argv) {
             .help("Json: print json instead of csv")
             .default_value(std::optional<int>{})
             .implicit_value(std::optional<int>{-1});
+    program.add_argument("-r", "--retry")
+            .help("Number of retrys for failed bundles")
+            .default_value(uint32_t{0})
+            .implicit_value(uint32_t{1})
+            .action([](std::string const& value) -> uint32_t {
+                auto result = std::stoul(value);
+                return result;
+            });
     program.add_argument("-d", "--download")
             .help("Url: to download from.")
             .default_value(std::optional<std::string>{})
@@ -60,6 +68,7 @@ void CLI::parse(int argc, char ** argv) {
     path = program.get<std::optional<std::regex>>("-p");
     json = program.get<std::optional<int>>("-j");
     upgrade = program.get<std::string>("-u");
+    retry = program.get<uint32_t>("-r");
     download = program.get<std::optional<std::string>>("-d");
     output = program.get<std::string>("-o");
 }

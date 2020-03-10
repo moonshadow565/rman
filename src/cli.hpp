@@ -14,6 +14,7 @@ namespace rman {
         std::vector<std::string> langs = {};
         std::optional<int> json = {};
         std::string upgrade = {};
+        uint32_t retry = {};
         std::optional<std::string> download = {};
         std::string output = {};
 

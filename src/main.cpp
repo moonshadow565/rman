@@ -83,12 +83,22 @@ struct Main {
         auto bundles = BundleDownloadList::from_file_info(file);
         size_t total = bundles.bundles.size();
         size_t finished = 0;
-        std::cout << '\r' << "Bundles: " << finished << '/' << total << std::flush;
-        for(auto const& bundle: bundles.bundles) {
-            if (bundle.download(httpclient, outfile)) {
-                finished++;
-            }
-            std::cout << '\r' << "Bundles: " << finished << '/' << total << std::flush;
+        for (uint32_t tried = 0; !bundles.bundles.empty() && tried <= cli.retry; tried++) {
+            std::cout << '\r'
+                      << "Try: " << tried << ' '
+                      << "Bundles: " << finished
+                      << '/' << total << std::flush;
+            bundles.bundles.remove_if([&](BundleDownload const& bundle){
+                auto result = bundle.download(httpclient, outfile);
+                if (result) {
+                    finished++;
+                }
+                std::cout << '\r'
+                          << "Try: " << tried << ' '
+                          << "Bundles: " << finished
+                          << '/' << total << std::flush;
+                return result;
+            });
         }
         std::cout << ' ' << (total == finished ? "OK!" : "ERROR!") << std::endl;
     }
