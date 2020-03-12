@@ -22,6 +22,7 @@ namespace rman {
         std::vector<std::string> langs = {};
         std::string upgrade = {};
         uint32_t retry = {};
+        uint32_t connections = {};
         std::string download = {};
         std::string output = {};
 

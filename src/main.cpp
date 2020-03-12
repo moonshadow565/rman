@@ -12,7 +12,7 @@ struct Main {
     CLI cli = {};
     FileList manifest = {};
     std::optional<FileList> upgrade = {};
-    HttpClient httpclient = {};
+    std::unique_ptr<HttpClient> client = {};
 
     void parse_args(int argc, char** argv) {
         cli.parse(argc, argv);
@@ -84,7 +84,7 @@ struct Main {
     }
 
     void action_download() {
-        httpclient = HttpClient(cli.download, cli.curl_verbose);
+        client = std::make_unique<HttpClient>(cli.download, cli.curl_verbose, cli.connections);
         for(auto& file: manifest.files) {
             std::cout << "File: " << file.path << std::endl;
             if (cli.exist && file.remove_exist(cli.output)) {
@@ -102,26 +102,29 @@ struct Main {
     void download_file(FileInfo const& file) {
         auto outfile = file.create_file(cli.output);
         auto bundles = BundleDownloadList::from_file_info(file);
-        size_t total = bundles.bundles.size();
-        size_t finished = 0;
-        for (uint32_t tried = 0; !bundles.bundles.empty() && tried <= cli.retry; tried++) {
+        client->set_outfile(&outfile);
+        size_t total = bundles.unfinished.size();
+        for (uint32_t tried = 0; !bundles.unfinished.empty() && tried <= cli.retry; tried++) {
             std::cout << '\r'
                       << "Try: " << tried << ' '
-                      << "Bundles: " << finished
+                      << "Bundles: " << bundles.good.size()
                       << '/' << total << std::flush;
-            bundles.bundles.remove_if([&](BundleDownload const& bundle){
-                auto result = bundle.download(httpclient, outfile);
-                if (result) {
-                    finished++;
-                }
+            bundles.queued = std::move(bundles.unfinished);
+            for(;;) {
+                client->push(bundles);
+                client->perform();
+                client->pop(bundles);
                 std::cout << '\r'
                           << "Try: " << tried << ' '
-                          << "Bundles: " << finished
+                          << "Bundles: " << bundles.good.size()
                           << '/' << total << std::flush;
-                return result;
-            });
+                if (client->finished() && bundles.queued.empty()) {
+                    break;
+                }
+                client->poll(100);
+            }
         }
-        std::cout << ' ' << (total == finished ? "OK!" : "ERROR!") << std::endl;
+        std::cout << ' ' << (bundles.unfinished.empty() ? "OK!" : "ERROR!") << std::endl;
     }
 
     static std::vector<char> read_file(std::string const& filename) {

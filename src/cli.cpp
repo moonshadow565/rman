@@ -64,6 +64,15 @@ void CLI::parse(int argc, char ** argv) {
     program.add_argument("-d", "--download")
             .help("Url: to download from.")
             .default_value(std::string(DEFAULT_URL));
+    program.add_argument("-c", "--connections")
+            .default_value(uint32_t{32})
+            .action([](std::string const& value) -> uint32_t {
+                auto result = std::stoul(value);
+                if (result < 1) {
+                    throw std::runtime_error("Minimum number of connections is 1");
+                }
+                return result;
+            });
     program.add_argument("-o", "--output")
             .help("Directory: output")
             .default_value(std::string("."));
@@ -78,6 +87,7 @@ void CLI::parse(int argc, char ** argv) {
     upgrade = program.get<std::string>("-u");
     retry = program.get<uint32_t>("-r");
     download = program.get<std::string>("-d");
+    connections = program.get<uint32_t>("-c");
     output = program.get<std::string>("-o");
 }
 
