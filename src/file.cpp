@@ -35,7 +35,7 @@ namespace rman {
             { "id", to_hex(chunk.id) },
             { "compressed_size", chunk.compressed_size },
             { "uncompressed_size", chunk.uncompressed_size },
-            { "bunlde_id", to_hex(chunk.bundle_id) },
+            { "bundle_id", to_hex(chunk.bundle_id) },
             { "compressed_offset", chunk.compressed_offset },
             { "uncompressed_offset", chunk.uncompressed_offset },
         };
@@ -45,7 +45,7 @@ namespace rman {
         chunk.id = from_hex<ChunkID>(j.at("id"));
         chunk.compressed_size = j.at("compressed_size");
         chunk.uncompressed_size = j.at("uncompressed_size");
-        chunk.bundle_id = from_hex<BundleID>(j.at("bunlde_id"));
+        chunk.bundle_id = from_hex<BundleID>(j.at("bundle_id"));
         chunk.compressed_offset = j.at("compressed_offset");
         chunk.uncompressed_offset = j.at("uncompressed_offset");
     }
@@ -241,20 +241,13 @@ std::string FileInfo::to_csv() const noexcept {
     result += ',';
     result += to_hex(id);
     result += ',';
-    bool lang_first = true;
-    for (auto const& lang: langs) {
-        if (lang_first) {
-            lang_first = false;
-        } else {
-            result += ' ';
-        }
-        result += lang;
-    }
+    result += std::to_string(chunks.size());
     return result;
 }
 
 std::string FileInfo::to_json(int indent) const noexcept {
-    return json{*this}.dump(indent);
+    json j = *this;
+    return j.dump(indent);
 }
 
 /// Validity verification
@@ -301,25 +294,25 @@ void FileList::remove_uptodate(FileList const& old_list) noexcept {
 
 void FileList::sanitize() const {
     constexpr int32_t CHUNK_LIMIT = 16 * 1024 * 1024;
-    auto re_name = std::regex("[\\w\\.\\- ]+", std::regex::optimize);
+    auto re_lang = std::regex("[\\w\\.\\-_]+", std::regex::optimize);
     for(auto const& file: files) {
-        rman_trace("File id: %016llX", (unsigned long long)file.id);
+        rman_trace("File id: %016llX, name: %s", (unsigned long long)file.id, file.path.c_str());
         rman_assert(file.id != FileID::None);
         rman_assert(file.link.empty());
         rman_assert(!file.path.empty());
         rman_assert(file.path.size() < 256);
         auto path = fs::path(file.path, fs::path::generic_format);
-        auto path_normalized = path.lexically_normal();
-        rman_assert(path == path_normalized);
+        auto path_normalized = path.lexically_normal().generic_string();
+        rman_assert(file.path == path_normalized);
         rman_assert(!path.is_absolute());
         for (auto const& component: path) {
             auto path_component = component.generic_string();
             rman_assert(!path_component.empty());
             rman_assert(path_component != ".." && path_component != ".");
-            rman_assert(std::regex_match(path_component, re_name));
+            // rman_assert(std::regex_match(path_component, re_name));
         }
         for (auto const& lang: file.langs) {
-            rman_assert(std::regex_match(lang, re_name));
+            rman_assert(std::regex_match(lang, re_lang));
         }
         rman_assert(file.size > 0);
         rman_assert(file.params.hash_type <= HashType::RITO_HKDF);

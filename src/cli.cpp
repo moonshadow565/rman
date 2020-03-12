@@ -6,6 +6,33 @@ using namespace rman;
 
 static inline constexpr auto DEFAULT_URL = "http://lol.secure.dyn.riotcdn.net/channels/public";
 
+static std::vector<std::string> parse_list(std::string const& value) {
+    std::vector<std::string> result = {};
+    size_t next = 0;
+    size_t end = value.size();
+    auto skip_whitespace = [&](size_t cur) -> size_t {
+        while (cur != end && (value[cur] == ' ' || value[cur] == ',')) {
+            cur++;
+        }
+        return cur;
+    };
+    auto get_next = [&](size_t cur) -> size_t {
+        while (cur != end && (value[cur] != ' ' && value[cur] != ',')) {
+            cur++;
+        }
+        return cur;
+    };
+    while(next != end) {
+        auto start = skip_whitespace(next);
+        next = get_next(start);
+        auto size = next - start;
+        if (size > 0) {
+            result.push_back(value.substr(start, size));
+        }
+    }
+    return result;
+}
+
 void CLI::parse(int argc, char ** argv) {
     argparse::ArgumentParser program("fckrman");
     program.add_argument("action")
@@ -40,7 +67,7 @@ void CLI::parse(int argc, char ** argv) {
             .implicit_value(true);
     program.add_argument("-l", "--lang")
             .help("Filter: language(none for international files).")
-            .default_value(std::vector<std::string>{});
+            .default_value(std::string{});
     program.add_argument("-p", "--path")
             .help("Filter: path regex")
             .default_value(std::optional<std::regex>{})
@@ -65,7 +92,7 @@ void CLI::parse(int argc, char ** argv) {
             .help("Url: to download from.")
             .default_value(std::string(DEFAULT_URL));
     program.add_argument("-c", "--connections")
-            .default_value(uint32_t{32})
+            .default_value(uint32_t{64})
             .action([](std::string const& value) -> uint32_t {
                 auto result = std::stoul(value);
                 if (result < 1) {
@@ -82,7 +109,7 @@ void CLI::parse(int argc, char ** argv) {
     curl_verbose = program.get<bool>("--curl-verbose");
     verify = program.get<bool>("-v");
     exist = program.get<bool>("-e");
-    langs = program.get<std::vector<std::string>>("-l");
+    langs = parse_list(program.get<std::string>("-l"));
     path = program.get<std::optional<std::regex>>("-p");
     upgrade = program.get<std::string>("-u");
     retry = program.get<uint32_t>("-r");
