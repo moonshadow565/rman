@@ -93,6 +93,7 @@ void CLI::parse(int argc, char ** argv) {
             .default_value(std::string(DEFAULT_URL));
     program.add_argument("-c", "--connections")
             .default_value(uint32_t{64})
+            .help("Connections: conncurent per file")
             .action([](std::string const& value) -> uint32_t {
                 auto result = std::stoul(value);
                 if (result < 1) {

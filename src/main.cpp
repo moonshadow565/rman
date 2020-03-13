@@ -121,7 +121,7 @@ struct Main {
                 if (client->finished() && bundles.queued.empty()) {
                     break;
                 }
-                client->poll(50);
+                client->poll(100);
             }
         }
         std::cout << ' ' << (bundles.unfinished.empty() ? "OK!" : "ERROR!") << std::endl;
