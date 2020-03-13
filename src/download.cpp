@@ -273,5 +273,5 @@ void HttpClient::perform() {
 
 void HttpClient::poll(int timeout) {
     int numfds = 0;
-    rman_assert(curl_multi_wait(handle_, nullptr, 0, timeout, &numfds) == CURLM_OK);
+    rman_assert(curl_multi_poll(handle_, nullptr, 0, timeout, &numfds) == CURLM_OK);
 }
