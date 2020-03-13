@@ -85,16 +85,16 @@ struct Main {
 
     void action_download() {
         client = std::make_unique<HttpClient>(cli.download, cli.curl_verbose, cli.connections);
-        for(auto& file: manifest.files) {
-            std::cout << "File: " << file.path << std::endl;
+        for (auto& file: manifest.files) {
             if (cli.exist && file.remove_exist(cli.output)) {
-                std::cout << "SKIP!" << std::endl;
+                std::cout << "SKIP: " << file.path << std::endl;
                 continue;
             }
             if (cli.verify && file.remove_verified(cli.output)) {
-                std::cout << "VERIFIED!" << std::endl;
+                std::cout << "OK: " << file.path << std::endl;
                 continue;
             }
+            std::cout << "START: " << file.path << std::endl;
             download_file(file);
         }
     }

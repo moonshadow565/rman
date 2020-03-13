@@ -64,6 +64,8 @@ HttpConnection::HttpConnection(std::string url, bool verbose) : prefix_(std::mov
     rman_assert(curl_easy_setopt(handle_, CURLOPT_WRITEFUNCTION, &write_data) == CURLE_OK);
     rman_assert(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this) == CURLE_OK);
     // curl_easy_setopt(handle_, CURLOPT_PRIVATE, (char*)this);
+    inbuffer_.reserve(1 * 1024 * 1024);
+    outbuffer_.reserve(1 * 1024 * 1024);
 }
 
 HttpConnection::~HttpConnection() noexcept {
@@ -76,6 +78,9 @@ void HttpConnection::set_bundle(std::unique_ptr<BundleDownload> bundle) {
     bundle_ = std::move(bundle);
     chunk_ = 0;
     inbuffer_.clear();
+    outbuffer_.clear();
+    inbuffer_.reserve(ZSTD_COMPRESSBOUND((size_t)(bundle_->max_uncompressed)));
+    outbuffer_.reserve(bundle_->max_uncompressed);
     if (bundle_->chunks.size() > 1) {
         state_ = HttpState::RecvR0;
     } else {
