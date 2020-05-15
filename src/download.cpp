@@ -29,7 +29,7 @@ BundleDownloadList BundleDownloadList::from_file_info(FileInfo const& info) noex
     ChunkDownload* chunk = {};
     auto chunk_id = ChunkID::None;
     for(auto const& i: chunks) {
-        if (i.bundle_id != bundle_id) {
+        if (i.bundle_id != bundle_id || (bundle && bundle->range.size() > 4000)) {
             bundle = bundles.emplace_back(std::make_unique<BundleDownload>()).get();
             bundle->id = i.bundle_id;
             bundle->path = "/bundles/" + to_hex(i.bundle_id) + ".bundle";
@@ -273,5 +273,5 @@ void HttpClient::perform() {
 
 void HttpClient::poll(int timeout) {
     int numfds = 0;
-    rman_assert(curl_multi_poll(handle_, nullptr, 0, timeout, &numfds) == CURLM_OK);
+    rman_assert(curl_multi_wait(handle_, nullptr, 0, timeout, &numfds) == CURLM_OK);
 }
