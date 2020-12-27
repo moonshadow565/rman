@@ -8,8 +8,10 @@
 namespace rman {
     enum class Action {
         List,
+        ListBundles,
         Json,
         Download,
+        DownloadBundles,
     };
 
     struct CLI {

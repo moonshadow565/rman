@@ -207,9 +207,6 @@ HttpClient::HttpClient(std::string url, bool verbose, size_t connections) {
         }
     };
     static auto init = CurlInit{};
-    while (url.size() && url.back() == '/') {
-        url.pop_back();
-    }
     handle_ = curl_multi_init();
     connections_.resize(connections);
     for (auto& connection: connections_) {

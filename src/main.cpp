@@ -5,6 +5,7 @@
 #include "download.hpp"
 #include <iostream>
 #include <fstream>
+#include <set>
 
 using namespace rman;
 
@@ -42,11 +43,17 @@ struct Main {
         case Action::List:
             action_list();
             break;
+        case Action::ListBundles:
+            action_list_bundles();
+            break;
         case Action::Json:
             action_json();
             break;
         case Action::Download:
             action_download();
+            break;
+        case Action::DownloadBundles:
+            action_download_bundles();
             break;
         }
     }
@@ -60,6 +67,25 @@ struct Main {
                 continue;
             }
             std::cout << file.to_csv() << std::endl;
+        }
+    }
+
+    void action_list_bundles() noexcept {
+        auto visited = std::set<BundleID>{};
+        for (auto& file: manifest.files) {
+            if (cli.exist && file.remove_exist(cli.output)) {
+                continue;
+            }
+            if (cli.verify && file.remove_verified(cli.output)) {
+                continue;
+            }
+            for (auto const& chunk: file.chunks) {
+                if (visited.find(chunk.bundle_id) != visited.end()) {
+                    continue;
+                }
+                visited.insert(chunk.bundle_id);
+                std::cout << cli.download << "/bundles/" << to_hex(chunk.bundle_id) << ".bundle" << std::endl;
+            }
         }
     }
 
@@ -125,6 +151,11 @@ struct Main {
             }
         }
         std::cout << ' ' << (bundles.unfinished.empty() ? "OK!" : "ERROR!") << std::endl;
+    }
+
+    void action_download_bundles() {
+        std::cerr << "Not implemented yet!" << std::endl;
+        exit(-1);
     }
 
     static std::vector<char> read_file(std::string const& filename) {

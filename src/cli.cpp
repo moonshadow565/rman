@@ -36,17 +36,23 @@ static std::vector<std::string> parse_list(std::string const& value) {
 void CLI::parse(int argc, char ** argv) {
     argparse::ArgumentParser program("fckrman");
     program.add_argument("action")
-            .help("action: list, download, json")
+            .help("action: list, bundles, download, archive, json")
             .required()
             .action([](std::string const& value){
                 if (value == "list" || value == "ls") {
                     return Action::List;
+                }
+                if (value == "bundles" || value == "bl") {
+                    return Action::ListBundles;
                 }
                 if (value == "json" || value == "js") {
                     return Action::Json;
                 }
                 if (value == "download" || value == "dl") {
                     return Action::Download;
+                }
+                if (value == "archive" || value == "ar") {
+                    return Action::DownloadBundles;
                 }
                 throw std::runtime_error("Unknown action!");
             });
@@ -115,6 +121,14 @@ void CLI::parse(int argc, char ** argv) {
     upgrade = program.get<std::string>("-u");
     retry = program.get<uint32_t>("-r");
     download = program.get<std::string>("-d");
+    for (auto& c: download) {
+        if (c == '\\') {
+            c = '/';
+        }
+    }
+    while (download.size() && download.back() == '/') {
+        download.pop_back();
+    }
     connections = program.get<uint32_t>("-c");
     output = program.get<std::string>("-o");
 }
