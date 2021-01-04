@@ -9,9 +9,9 @@ namespace rman {
     enum class Action {
         List,
         ListBundles,
+        ListChunks,
         Json,
         Download,
-        DownloadBundles,
     };
 
     struct CLI {

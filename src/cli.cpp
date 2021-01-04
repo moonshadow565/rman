@@ -45,14 +45,14 @@ void CLI::parse(int argc, char ** argv) {
                 if (value == "bundles" || value == "bl") {
                     return Action::ListBundles;
                 }
+                if (value == "chunks" || value == "ch") {
+                    return Action::ListChunks;
+                }
                 if (value == "json" || value == "js") {
                     return Action::Json;
                 }
                 if (value == "download" || value == "dl") {
                     return Action::Download;
-                }
-                if (value == "archive" || value == "ar") {
-                    return Action::DownloadBundles;
                 }
                 throw std::runtime_error("Unknown action!");
             });

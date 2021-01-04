@@ -46,14 +46,14 @@ struct Main {
         case Action::ListBundles:
             action_list_bundles();
             break;
+        case Action::ListChunks:
+            action_list_chunks();
+            break;
         case Action::Json:
             action_json();
             break;
         case Action::Download:
             action_download();
-            break;
-        case Action::DownloadBundles:
-            action_download_bundles();
             break;
         }
     }
@@ -80,11 +80,36 @@ struct Main {
                 continue;
             }
             for (auto const& chunk: file.chunks) {
-                if (visited.find(chunk.bundle_id) != visited.end()) {
+                auto const id = chunk.bundle_id;
+                if (visited.find(id) != visited.end()) {
                     continue;
                 }
-                visited.insert(chunk.bundle_id);
+                visited.insert(id);
                 std::cout << cli.download << "/bundles/" << to_hex(chunk.bundle_id) << ".bundle" << std::endl;
+            }
+        }
+    }
+
+    void action_list_chunks() noexcept {
+        auto visited = std::set<std::pair<BundleID, ChunkID>>{};
+        for (auto& file: manifest.files) {
+            if (cli.exist && file.remove_exist(cli.output)) {
+                continue;
+            }
+            if (cli.verify && file.remove_verified(cli.output)) {
+                continue;
+            }
+            for (auto const& chunk: file.chunks) {
+                auto const id = std::make_pair(chunk.bundle_id, chunk.id);
+                if (visited.find(id) != visited.end()) {
+                    continue;
+                }
+                visited.insert(id);
+                std::cout << to_hex(chunk.bundle_id) << '\t'
+                          << to_hex(chunk.id) << '\t'
+                          << to_hex(chunk.compressed_offset, 8) << '\t'
+                          << to_hex(chunk.compressed_size, 8) << '\t'
+                          << to_hex(chunk.uncompressed_size, 8) << std::endl;;
             }
         }
     }
@@ -151,11 +176,6 @@ struct Main {
             }
         }
         std::cout << ' ' << (bundles.unfinished.empty() ? "OK!" : "ERROR!") << std::endl;
-    }
-
-    void action_download_bundles() {
-        std::cerr << "Not implemented yet!" << std::endl;
-        exit(-1);
     }
 
     static std::vector<char> read_file(std::string const& filename) {
