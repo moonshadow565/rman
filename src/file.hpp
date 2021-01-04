@@ -50,7 +50,7 @@ namespace rman {
         std::ofstream create_file(std::string const& folder_name) const;
         bool remove_exist(std::string const& folder_name) noexcept;
         bool remove_verified(std::string const& folder_name) noexcept;
-        bool remove_uptodate(FileInfo const& old) noexcept;
+        bool is_uptodate(FileInfo const& old) const noexcept;
     };
 
     struct FileList {

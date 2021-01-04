@@ -241,7 +241,15 @@ std::string FileInfo::to_csv() const noexcept {
     result += ',';
     result += to_hex(id);
     result += ',';
-    result += std::to_string(chunks.size());
+    bool hadfirst = false;
+    for (auto const& l: langs) {
+        if (hadfirst) {
+            result += ';';
+        } else {
+            hadfirst = true;
+        }
+        result += l;
+    }
     return result;
 }
 
@@ -285,10 +293,7 @@ void FileList::remove_uptodate(FileList const& old_list) noexcept {
         if (old == old_lookup.end()) {
             return false;
         }
-        if (old->second->id == file.id) {
-            return true;
-        }
-        return file.remove_uptodate(*old->second);
+        return file.is_uptodate(*old->second);
     });
 }
 
@@ -422,15 +427,10 @@ bool FileInfo::remove_verified(std::string const& folder_name) noexcept {
     return true;
 }
 
-bool FileInfo::remove_uptodate(FileInfo const& old_file) noexcept {
-    using key_t = std::pair<int32_t, ChunkID>;
-    auto old_lookup = std::set<key_t>{};
-    for(auto const& old: old_file.chunks) {
-        old_lookup.insert({old.uncompressed_offset, old.id});
+bool FileInfo::is_uptodate(FileInfo const& old_file) const noexcept {
+    if (id == old_file.id) {
+        return true;
     }
-    remove_if(chunks, [&](FileChunk const& chunk) {
-        return old_lookup.find({chunk.uncompressed_offset, chunk.id}) != old_lookup.end();
-    });
-    return old_file.chunks.empty();
+    return false;
 }
 
