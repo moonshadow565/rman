@@ -13,9 +13,29 @@
 using namespace rman;
 namespace fs = std::filesystem;
 
+/// Bundle download
+
+bool BundleDownload::can_simplify() const noexcept {
+    if (range_mode != RangeMode::Multi) {
+        return false;
+    }
+    auto next = chunks.front().compressed_offset;
+    for (auto const& chunk: chunks) {
+        if (chunk.compressed_offset != next) {
+            return false;
+        }
+        next = chunk.compressed_offset + chunk.compressed_size;
+    }
+    return true;
+}
+
+bool BundleDownload::max_range() const noexcept {
+    return range_mode == RangeMode::Multi && range_multi.size() > 4000;
+}
+
 /// Bundle List
 
-BundleDownloadList BundleDownloadList::from_file_info(FileInfo const& info) noexcept {
+BundleDownloadList BundleDownloadList::from_file_info(FileInfo const& info, DownloadOpts const& opts) {
     auto chunks = info.chunks;
     std::sort(chunks.begin(), chunks.end(), [](FileChunk const& l, FileChunk const& r) {
         using wrap_t = std::tuple<BundleID, int32_t, int32_t>;
@@ -29,20 +49,25 @@ BundleDownloadList BundleDownloadList::from_file_info(FileInfo const& info) noex
     ChunkDownload* chunk = {};
     auto chunk_id = ChunkID::None;
     for(auto const& i: chunks) {
-        if (i.bundle_id != bundle_id || (bundle && bundle->range.size() > 4000)) {
+        rman_assert(i.id != ChunkID::None);
+        rman_assert(i.bundle_id != BundleID::None);
+        if (i.bundle_id != bundle_id || (bundle && bundle->max_range())) {
             bundle = bundles.emplace_back(std::make_unique<BundleDownload>()).get();
+            bundle->range_mode = opts.range_mode;
             bundle->id = i.bundle_id;
             bundle->path = "/bundles/" + to_hex(i.bundle_id) + ".bundle";
             bundle_id = i.bundle_id;
             chunk_id = ChunkID::None;
         }
         if (i.id != chunk_id) {
-            if (!bundle->range.empty()) {
-                bundle->range += ", ";
+            if (opts.range_mode == RangeMode::Multi) {
+                if (!bundle->range_multi.empty()) {
+                    bundle->range_multi += ", ";
+                }
+                bundle->range_multi += std::to_string(i.compressed_offset);
+                bundle->range_multi += "-";
+                bundle->range_multi += std::to_string(i.compressed_offset + i.compressed_size - 1);
             }
-            bundle->range += std::to_string(i.compressed_offset);
-            bundle->range += "-";
-            bundle->range += std::to_string(i.compressed_offset + i.compressed_size - 1);
             bundle->total_size += (size_t)i.compressed_size;
             bundle->max_uncompressed = std::max(bundle->max_uncompressed,
                                                 (size_t)i.uncompressed_size);
@@ -52,18 +77,42 @@ BundleDownloadList BundleDownloadList::from_file_info(FileInfo const& info) noex
         chunk->offsets.push_back(i.uncompressed_offset);
         bundle->offset_count++;
     }
+    for (auto& bundle: bundles) {
+        if (bundle->can_simplify()) { // simplify to one range
+            bundle->range_mode = RangeMode::One;
+        }
+        auto const start = bundle->chunks.front().compressed_offset;
+        auto const end = bundle->chunks.back().compressed_offset + bundle->chunks.back().compressed_size - 1;
+        bundle->range_one = std::to_string(start) + "-" + std::to_string(end);
+    }
     return BundleDownloadList { std::move(bundles), {}, {} };
 }
 
 /// Connection
 
-HttpConnection::HttpConnection(std::string url, bool verbose) : prefix_(std::move(url)) {
+HttpConnection::HttpConnection(DownloadOpts const& opts)
+    : prefix_(opts.prefix), archive_(opts.archive) {
     handle_ = curl_easy_init();
-    rman_assert(curl_easy_setopt(handle_, CURLOPT_VERBOSE, (verbose ? 1L : 0L)) == CURLE_OK);
+    rman_assert(curl_easy_setopt(handle_, CURLOPT_VERBOSE, (opts.curl_verbose ? 1L : 0L)) == CURLE_OK);
     rman_assert(curl_easy_setopt(handle_, CURLOPT_NOPROGRESS, 1L) == CURLE_OK);
     rman_assert(curl_easy_setopt(handle_, CURLOPT_WRITEFUNCTION, &write_data) == CURLE_OK);
     rman_assert(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this) == CURLE_OK);
     // curl_easy_setopt(handle_, CURLOPT_PRIVATE, (char*)this);
+    if (opts.curl_buffer) {
+        rman_assert(curl_easy_setopt(handle_, CURLOPT_BUFFERSIZE, opts.curl_buffer) == CURLE_OK);
+    }
+    if (!opts.curl_proxy.empty()) {
+        rman_assert(curl_easy_setopt(handle_, CURLOPT_PROXY, opts.curl_proxy.c_str()) == CURLE_OK);
+    }
+    if (!opts.curl_useragent.empty()) {
+        rman_assert(curl_easy_setopt(handle_, CURLOPT_USERAGENT, opts.curl_useragent.c_str()) == CURLE_OK);
+    }
+    if (opts.curl_cookiefile != "-") {
+        rman_assert(curl_easy_setopt(handle_, CURLOPT_COOKIEFILE, opts.curl_cookiefile.c_str()) == CURLE_OK);
+    }
+    if (!opts.curl_cookielist.empty()) {
+        rman_assert(curl_easy_setopt(handle_, CURLOPT_COOKIELIST, opts.curl_cookielist.c_str()) == CURLE_OK);
+    }
     inbuffer_.reserve(1 * 1024 * 1024);
     outbuffer_.reserve(1 * 1024 * 1024);
 }
@@ -74,7 +123,18 @@ HttpConnection::~HttpConnection() noexcept {
     }
 }
 
-void HttpConnection::set_bundle(std::unique_ptr<BundleDownload> bundle) {
+static bool is_valid_bundle(std::string const& path) {
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) {
+        return false;
+    }
+    std::array<char, 4> magic = {};
+    file.seekg(-4, std::ios::end);
+    file.read(magic.data(), 4);
+    return magic == std::array { 'R', 'B', 'U', 'N' };
+}
+
+void HttpConnection::give_bundle(std::unique_ptr<BundleDownload> bundle) {
     bundle_ = std::move(bundle);
     chunk_ = 0;
     inbuffer_.clear();
@@ -86,9 +146,40 @@ void HttpConnection::set_bundle(std::unique_ptr<BundleDownload> bundle) {
     } else {
         state_ = HttpState::RecvData;
     }
+    range_pos_ = 0;
+    range_mode_ = bundle_->range_mode;
     std::string target = prefix_ + bundle_->path;
+    archivefile_ = nullptr;
+    if (!archive_.empty()) {
+        std::string backup = archive_ + bundle_->path;
+        if (is_valid_bundle(backup)) {
+            target = "file://" + backup;
+            if (range_mode_ == RangeMode::Multi) {
+                range_mode_ = RangeMode::One;
+            }
+        } else {
+            archivefile_ = std::make_unique<std::ofstream>(backup, std::ios::binary);
+            range_mode_ = RangeMode::Full;
+        }
+    }
     rman_assert(curl_easy_setopt(handle_, CURLOPT_URL, target.c_str()) == CURLE_OK);
-    rman_assert(curl_easy_setopt(handle_, CURLOPT_RANGE, bundle_->range.c_str()) == CURLE_OK);
+    switch (range_mode_) {
+    case RangeMode::Multi:
+        rman_assert(curl_easy_setopt(handle_, CURLOPT_RANGE, bundle_->range_multi.c_str()) == CURLE_OK);
+        break;
+    case RangeMode::One:
+        range_pos_ = bundle_->chunks.front().compressed_offset;
+        rman_assert(curl_easy_setopt(handle_, CURLOPT_RANGE, bundle_->range_one.c_str()) == CURLE_OK);
+        break;
+    case RangeMode::Full:
+        rman_assert(curl_easy_setopt(handle_, CURLOPT_RANGE, nullptr) == CURLE_OK);
+        break;
+    }
+}
+
+std::unique_ptr<BundleDownload> HttpConnection::take_bundle() {
+    archivefile_ = nullptr;
+    return std::move(bundle_);
 }
 
 size_t HttpConnection::write_data(const char *p, size_t s, size_t n, HttpConnection *c) noexcept {
@@ -101,7 +192,43 @@ size_t HttpConnection::write_data(const char *p, size_t s, size_t n, HttpConnect
 }
 
 bool HttpConnection::write(char const* data, char const* end) noexcept {
-    while(data != end) {
+    switch (range_mode_) {
+    case RangeMode::Full:
+        if (archivefile_) {
+            archivefile_->write(data, end - data);
+        }
+    case RangeMode::One:
+        return write_raw(data, end);
+    case RangeMode::Multi:
+        return write_http(data, end);
+    }
+    return false;
+}
+
+bool HttpConnection::write_raw(char const* data, char const* end) noexcept {
+    while (data != end) {
+        auto old_data = data;
+        if (state_ == HttpState::Done) {
+            data = end;
+        } else {
+            auto const& chunk = bundle_->chunks[chunk_];
+            if (chunk.compressed_offset > range_pos_) {
+                data += std::min(end - data, (ptrdiff_t)(chunk.compressed_offset - range_pos_));
+            } else {
+                data = receive(data, end - data);
+                if (!data) {
+                    state_ = HttpState::Done;
+                    return false;
+                }
+            }
+        }
+        range_pos_ += (data - old_data);
+    }
+    return true;
+}
+
+bool HttpConnection::write_http(char const* data, char const* end) noexcept {
+    while (data != end) {
         switch(state_) {
         case HttpState::Done:
             return false;
@@ -188,16 +315,18 @@ bool HttpConnection::decompress(const char *data) const noexcept {
     if (ZSTD_isError(result) || result != outbuffer_.size()) {
         return false;
     }
-    for (auto offset: chunk.offsets) {
-        outfile_->seekp(offset);
-        outfile_->write(outbuffer_.data(), (std::streamsize)outbuffer_.size());
+    if (outfile_) {
+        for (auto offset: chunk.offsets) {
+            outfile_->seekp(offset);
+            outfile_->write(outbuffer_.data(), (std::streamsize)outbuffer_.size());
+        }
     }
     return true;
 }
 
 /// Client
 
-HttpClient::HttpClient(std::string url, bool verbose, size_t connections) {
+HttpClient::HttpClient(DownloadOpts const& opts) {
     struct CurlInit {
         CurlInit() {
             curl_global_init(CURL_GLOBAL_ALL);
@@ -208,9 +337,9 @@ HttpClient::HttpClient(std::string url, bool verbose, size_t connections) {
     };
     static auto init = CurlInit{};
     handle_ = curl_multi_init();
-    connections_.resize(connections);
+    connections_.resize(opts.connections);
     for (auto& connection: connections_) {
-        connection = std::unique_ptr<HttpConnection>(new HttpConnection(url, verbose));
+        connection = std::make_unique<HttpConnection>(opts);
         free_.push_back(connection.get());
     }
 }
@@ -242,9 +371,9 @@ void HttpClient::pop(BundleDownloadList &list) {
         inprogress_.erase(handle);
         rman_assert(connection != nullptr);
         if (connection->is_done()) {
-            list.good.push_back(connection->get_bundle());
+            list.good.push_back(connection->take_bundle());
         } else {
-            list.unfinished.push_back(connection->get_bundle());
+            list.unfinished.push_back(connection->take_bundle());
         }
         free_.push_back(connection);
         rman_assert(curl_multi_remove_handle(handle_, handle) == CURLM_OK);
@@ -255,7 +384,7 @@ void HttpClient::push(BundleDownloadList &list) {
     while (!free_.empty() && !list.queued.empty()) {
         auto connection = free_.back();
         free_.pop_back();
-        connection->set_bundle(std::move(list.queued.back()));
+        connection->give_bundle(std::move(list.queued.back()));
         list.queued.pop_back();
         auto handle = connection->get_handle();
         inprogress_[handle] = connection;
@@ -272,3 +401,4 @@ void HttpClient::poll(int timeout) {
     int numfds = 0;
     rman_assert(curl_multi_wait(handle_, nullptr, 0, timeout, &numfds) == CURLM_OK);
 }
+

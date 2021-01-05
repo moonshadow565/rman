@@ -85,7 +85,7 @@ struct Main {
                     continue;
                 }
                 visited.insert(id);
-                std::cout << cli.download << "/bundles/" << to_hex(chunk.bundle_id) << ".bundle" << std::endl;
+                std::cout << cli.download.prefix << "/bundles/" << to_hex(chunk.bundle_id) << ".bundle" << std::endl;
             }
         }
     }
@@ -135,7 +135,7 @@ struct Main {
     }
 
     void action_download() {
-        client = std::make_unique<HttpClient>(cli.download, cli.curl_verbose, cli.connections);
+        client = std::make_unique<HttpClient>(cli.download);
         for (auto& file: manifest.files) {
             if (cli.exist && file.remove_exist(cli.output)) {
                 std::cout << "SKIP: " << file.path << std::endl;
@@ -151,11 +151,14 @@ struct Main {
     }
 
     void download_file(FileInfo const& file) {
-        auto outfile = file.create_file(cli.output);
-        auto bundles = BundleDownloadList::from_file_info(file);
-        client->set_outfile(&outfile);
+        std::unique_ptr<std::ofstream> outfile = {};
+        if (!cli.nowrite) {
+            outfile = std::make_unique<std::ofstream>(file.create_file(cli.output));
+        }
+        auto bundles = BundleDownloadList::from_file_info(file, cli.download);
+        client->set_outfile(outfile.get());
         size_t total = bundles.unfinished.size();
-        for (uint32_t tried = 0; !bundles.unfinished.empty() && tried <= cli.retry; tried++) {
+        for (uint32_t tried = 0; !bundles.unfinished.empty() && tried <= cli.download.retry; tried++) {
             std::cout << '\r'
                       << "Try: " << tried << ' '
                       << "Bundles: " << bundles.good.size()

@@ -4,6 +4,7 @@
 #include <vector>
 #include <optional>
 #include <regex>
+#include "download_opts.hpp"
 
 namespace rman {
     enum class Action {
@@ -17,16 +18,14 @@ namespace rman {
     struct CLI {
         Action action = {};
         std::string manifest = {};
-        bool curl_verbose = {};
         bool verify = {};
         bool exist = {};
+        bool nowrite = {};
         std::optional<std::regex> path = {};
         std::vector<std::string> langs = {};
         std::string upgrade = {};
-        uint32_t retry = {};
-        uint32_t connections = {};
-        std::string download = {};
         std::string output = {};
+        DownloadOpts download = {};
 
         void parse(int argc, char ** argv);
     };

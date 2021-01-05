@@ -14,6 +14,7 @@ add_executable(fckrman
     include/sha2.hpp
     src/cli.hpp
     src/cli.cpp
+    src/download_opts.hpp
     src/download.hpp
     src/download.cpp
     src/file.hpp
