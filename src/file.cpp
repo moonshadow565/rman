@@ -163,6 +163,7 @@ FileList FileList::from_manifest(RManifest const &manifest) {
     }
     auto chunk_lookup = std::unordered_map<ChunkID, FileChunk> {};
     for (auto const& bundle: manifest.bundles) {
+        result.unreferenced.insert(bundle.id);
         int32_t compressed_offset = 0;
         for (auto const& chunk: bundle.chunks) {
             chunk_lookup[chunk.id] = FileChunk{chunk, bundle.id, compressed_offset, {}};
@@ -215,6 +216,9 @@ FileList FileList::from_manifest(RManifest const &manifest) {
             rman_rethrow(chunk = chunk_lookup.at(chunk_id));
             chunk.uncompressed_offset = uncompressed_offset;
             uncompressed_offset += chunk.uncompressed_size;
+            if (auto r = result.unreferenced.find(chunk.bundle_id); r != result.unreferenced.end()) {
+                result.unreferenced.erase(r);
+            }
         }
     }
     return result;
@@ -227,7 +231,7 @@ FileList FileList::read(const char *data, size_t size) {
         return FileList::from_manifest(RManifest::read(data, size));
     } else if (*data == '[') {
         auto j = json::parse(data, data + size);
-        return FileList { j };
+        return FileList { j, {} };
     } else {
         rman_error("Unrecognized manifest format!");
     }

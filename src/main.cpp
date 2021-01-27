@@ -88,6 +88,13 @@ struct Main {
                 std::cout << cli.download.prefix << "/bundles/" << to_hex(chunk.bundle_id) << ".bundle" << std::endl;
             }
         }
+        for (auto const& id: manifest.unreferenced) {
+            if (visited.find(id) != visited.end()) {
+                continue;
+            }
+            visited.insert(id);
+            std::cout << cli.download.prefix << "/bundles/" << to_hex(id) << ".bundle" << std::endl;
+        }
     }
 
     void action_list_chunks() noexcept {

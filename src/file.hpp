@@ -8,6 +8,7 @@
 #include <optional>
 #include <regex>
 #include <fstream>
+#include <set>
 
 namespace rman {
     template <typename T>
@@ -55,6 +56,7 @@ namespace rman {
 
     struct FileList {
         std::list<FileInfo> files;
+        std::set<BundleID> unreferenced;
 
         static FileList from_manifest(RManifest const& manifest);
         static FileList read(char const* data, size_t size);
