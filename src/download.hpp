@@ -81,7 +81,7 @@ namespace rman {
         std::unique_ptr<BundleDownload> bundle_ = {};
         size_t chunk_ = {};
         std::ofstream* outfile_ = {};
-        std::uint32_t range_pos_ = {};
+        std::size_t range_pos_ = {};
         RangeMode range_mode_ = {};
         std::unique_ptr<std::ofstream> archivefile_ = {};
 

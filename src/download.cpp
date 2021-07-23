@@ -1,5 +1,6 @@
 #include "download.hpp"
 #include "error.hpp"
+#include <array>
 #include <iterator>
 #include <iostream>
 #include <zstd.h>
