@@ -12,7 +12,7 @@
 
 namespace rman {
     struct ChunkDownload : FileChunk {
-        std::vector<int32_t> offsets = {};
+        std::vector<uint32_t> offsets = {};
     };
 
     struct BundleDownload {
@@ -81,7 +81,7 @@ namespace rman {
         std::unique_ptr<BundleDownload> bundle_ = {};
         size_t chunk_ = {};
         std::ofstream* outfile_ = {};
-        std::int32_t range_pos_ = {};
+        std::uint32_t range_pos_ = {};
         RangeMode range_mode_ = {};
         std::unique_ptr<std::ofstream> archivefile_ = {};
 

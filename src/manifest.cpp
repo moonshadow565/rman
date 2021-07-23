@@ -17,8 +17,8 @@ static inline RManifest RManifest_unpack(Offset offset) {
         for (auto chunk_table : bundle_table[1].as<std::vector<Table>>()) {
             auto &chunk = bundle.chunks.emplace_back();
             chunk.id = chunk_table[0].as<ChunkID>();
-            chunk.compressed_size = chunk_table[1].as<int32_t>();
-            chunk.uncompressed_size = chunk_table[2].as<int32_t>();
+            chunk.compressed_size = chunk_table[1].as<uint32_t>();
+            chunk.uncompressed_size = chunk_table[2].as<uint32_t>();
         }
     }
     for (auto lang_table : body_table[1].as<std::vector<Table>>()) {
@@ -30,7 +30,7 @@ static inline RManifest RManifest_unpack(Offset offset) {
         auto &file = body.files.emplace_back();
         file.id = file_table[0].as<FileID>();
         file.parent_dir_id = file_table[1].as<DirID>();
-        file.size = file_table[2].as<int32_t>();
+        file.size = file_table[2].as<uint32_t>();
         file.name = file_table[3].as<std::string>();
         file.locale_flags = file_table[4].as<uint64_t>();
         file.unk5 = file_table[5].as<uint8_t>();                    // ???, unk size
@@ -55,8 +55,8 @@ static inline RManifest RManifest_unpack(Offset offset) {
         params.unk0 = param_table[0].as<uint16_t>();                   // ? sometimes 1
         params.hash_type = param_table[1].as<HashType>();
         params.unk2 = param_table[2].as<uint8_t>();                    // ???
-        params.unk3 = param_table[3].as<int32_t>();                    // ?? < max_uncompressed
-        params.max_uncompressed = param_table[4].as<int32_t>();
+        params.unk3 = param_table[3].as<uint32_t>();                    // ?? < max_uncompressed
+        params.max_uncompressed = param_table[4].as<uint32_t>();
     }
     return body;
 }
@@ -66,10 +66,10 @@ RManifest RManifest::read(char const *start, size_t size) {
     uint8_t version_major;
     uint8_t version_minor;
     uint16_t flags;
-    int32_t offset;
-    int32_t length;
+    uint32_t offset;
+    uint32_t length;
     ManifestID id;
-    int32_t body_length;
+    uint32_t body_length;
     std::vector<char> compressed_data = {};
     std::vector<char> uncompressed_data = {};
     char const* cur = start;

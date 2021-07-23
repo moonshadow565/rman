@@ -134,13 +134,13 @@ static void RITO_HKDF(uint8_t const* src, size_t size, uint8_t* output) noexcept
     }
 }
 
-static inline constexpr int32_t ZSTD_COMPRESSBOUND(int32_t ssrcSize) noexcept {
+static inline constexpr uint32_t ZSTD_COMPRESSBOUND(uint32_t ssrcSize) noexcept {
     size_t srcSize = (size_t)ssrcSize;
     size_t outSize = srcSize + (srcSize >> 8);
     if (srcSize < (128 << 10)) {
         outSize += ((128 << 10) - srcSize) >> 11;
     }
-    return (int32_t)outSize;
+    return (uint32_t)outSize;
 }
 
 template<typename T, typename F>
@@ -164,7 +164,7 @@ FileList FileList::from_manifest(RManifest const &manifest) {
     auto chunk_lookup = std::unordered_map<ChunkID, FileChunk> {};
     for (auto const& bundle: manifest.bundles) {
         result.unreferenced.insert(bundle.id);
-        int32_t compressed_offset = 0;
+        uint32_t compressed_offset = 0;
         for (auto const& chunk: bundle.chunks) {
             chunk_lookup[chunk.id] = FileChunk{chunk, bundle.id, compressed_offset, {}};
             compressed_offset += chunk.compressed_size;
@@ -208,7 +208,7 @@ FileList FileList::from_manifest(RManifest const &manifest) {
         if (file_info.langs.empty()) {
             file_info.langs.insert("none");
         }
-        int32_t uncompressed_offset = 0;
+        uint32_t uncompressed_offset = 0;
         file_info.chunks.reserve(file.chunk_ids.size());
         for (auto chunk_id: file.chunk_ids) {
             rman_trace("ChunkID: %016llX", (unsigned long long)chunk_id);
@@ -302,7 +302,7 @@ void FileList::remove_uptodate(FileList const& old_list) noexcept {
 }
 
 void FileList::sanitize() const {
-    constexpr int32_t CHUNK_LIMIT = 16 * 1024 * 1024;
+    constexpr uint32_t CHUNK_LIMIT = 16 * 1024 * 1024;
     auto re_lang = std::regex("[\\w\\.\\-_]+", std::regex::optimize);
     for(auto const& file: files) {
         rman_trace("File id: %016llX, name: %s", (unsigned long long)file.id, file.path.c_str());
@@ -323,13 +323,12 @@ void FileList::sanitize() const {
         for (auto const& lang: file.langs) {
             rman_assert(std::regex_match(lang, re_lang));
         }
-        rman_assert(file.size > 0);
         rman_assert(file.params.hash_type <= HashType::RITO_HKDF);
         auto max_uncompressed = file.params.max_uncompressed;
         rman_assert(max_uncompressed > 0 && max_uncompressed <= CHUNK_LIMIT);
-        rman_assert(file.size <= (INT32_MAX - max_uncompressed));
+        rman_assert(file.size <= (UINT32_MAX - max_uncompressed));
         auto max_compressed = ZSTD_COMPRESSBOUND(max_uncompressed);
-        auto next_min_uncompressed_offset = int32_t{0};
+        auto next_min_uncompressed_offset = uint32_t{0};
         for (auto const& chunk: file.chunks) {
             rman_trace("Chunk id: %016llX", (unsigned long long)chunk.id);
             rman_assert(chunk.id != ChunkID::None);
@@ -359,7 +358,7 @@ std::ofstream FileInfo::create_file(const std::string &folder_name) const {
         rman_assert(make_file.good());
     }
     auto exist_size = rman_rethrow(fs::file_size(dest));
-    if (exist_size > INT32_MAX || (int32_t)exist_size != size) {
+    if (exist_size > UINT32_MAX || (uint32_t)exist_size != size) {
         rman_rethrow(fs::resize_file(dest, (uint32_t)size));
     }
     auto file = std::ofstream(dest, std::ios::binary | std::ios::ate | std::ios::in);
@@ -409,7 +408,7 @@ bool FileInfo::remove_verified(std::string const& folder_name) noexcept {
     if ((end - start) >= INT32_MAX) {
         return false;
     }
-    auto file_size = (int32_t)(end - start);
+    auto file_size = (uint32_t)(end - start);
     auto buffer = std::vector<uint8_t>();
     buffer.resize((size_t)params.max_uncompressed);
     remove_if(chunks, [&](FileChunk const& chunk) -> bool {

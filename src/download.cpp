@@ -38,7 +38,7 @@ bool BundleDownload::max_range() const noexcept {
 BundleDownloadList BundleDownloadList::from_file_info(FileInfo const& info, DownloadOpts const& opts) {
     auto chunks = info.chunks;
     std::sort(chunks.begin(), chunks.end(), [](FileChunk const& l, FileChunk const& r) {
-        using wrap_t = std::tuple<BundleID, int32_t, int32_t>;
+        using wrap_t = std::tuple<BundleID, uint32_t, uint32_t>;
         auto left = wrap_t{l.bundle_id, l.compressed_offset, l.uncompressed_offset};
         auto right = wrap_t{r.bundle_id, r.compressed_offset, r.uncompressed_offset};
         return left < right;
@@ -276,7 +276,7 @@ bool HttpConnection::write_http(char const* data, char const* end) noexcept {
 
 char const* HttpConnection::receive(const char *data, ptrdiff_t size) noexcept {
     auto total = bundle_->chunks[chunk_].compressed_size;
-    auto needed = total - (int32_t)inbuffer_.size();
+    auto needed = total - (uint32_t)inbuffer_.size();
     if (needed == total && size >= total) {
         // Nothing in buffer and received data is enough to decompress
         if (!decompress(data)) {

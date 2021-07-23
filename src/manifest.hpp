@@ -37,8 +37,8 @@ namespace rman {
 
     struct RMANChunk {
         ChunkID id;
-        int32_t compressed_size;
-        int32_t uncompressed_size;
+        uint32_t compressed_size;
+        uint32_t uncompressed_size;
     };
 
     struct RMANBundle {
@@ -54,7 +54,7 @@ namespace rman {
     struct RMANFile {
         FileID id;
         DirID parent_dir_id;
-        int32_t size;
+        uint32_t size;
         std::string name;
         uint64_t locale_flags;
         uint8_t unk5;
@@ -79,8 +79,8 @@ namespace rman {
         uint16_t unk0;
         HashType hash_type;
         uint8_t unk2;
-        int32_t unk3;
-        int32_t max_uncompressed;
+        uint32_t unk3;
+        uint32_t max_uncompressed;
     };
 
     struct RManifest {

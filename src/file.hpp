@@ -26,15 +26,15 @@ namespace rman {
 
     struct FileChunk : RMANChunk {
         BundleID bundle_id;
-        int32_t compressed_offset;
-        int32_t uncompressed_offset;
+        uint32_t compressed_offset;
+        uint32_t uncompressed_offset;
 
         bool verify(std::vector<uint8_t> const& buffer, HashType type) const noexcept;
     };
 
     struct FileInfo {
         FileID id;
-        int32_t size;
+        uint32_t size;
         std::string path;
         std::string link;
         std::unordered_set<std::string> langs;
