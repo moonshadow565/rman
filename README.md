@@ -1,5 +1,3 @@
-Set of tools to manipulate manifest and bundle files from CLI.
-
 ```sh
 Usage: rbun-add.exe [options] output input
 
@@ -26,12 +24,16 @@ input           Bundle file or folder to read from.
 Optional arguments:
 -h --help       shows help message and exits [default: false]
 -v --version    prints version information and exits [default: false]
+--no-extract    Do not even attempt to extract chunk. [default: false]
+--no-hash       Do not verify hash. [default: false]
 ```
 
 ```sh
 Usage: rbun-ls.exe [options] input
 
 Lists contents of one or more bundles.
+Output is in CSV format as follows:
+BundlID,ChunkID,SizeCompressed,SizeUncompressed
 
 Positional arguments:
 input           Bundle file or folder to read from.
@@ -54,6 +56,34 @@ Optional arguments:
 -v --version    prints version information and exits [default: false]
 ```
 
+```sh
+Usage: rman [options] action manifest
+
+Positional arguments:
+action                  action: list, bundles, chunks, download [required]
+manifest                .manifest or .json [required]
+
+Optional arguments:
+-h --help               shows help message and exits [default: false]
+-v --version            prints version information and exits [default: false]
+-v --verify             Skip: verified chunks. [default: false]
+-e --exist              Skip: existing files. [default: false]
+-n --nowrite            Skip: writing files to disk. [default: false]
+-l --lang               Filter: language(none for international files). [default: ""]
+-p --path               Filter: path with regex match. [default: <not representable>]
+-o --output             Directory: to store and verify files from. [default: "."]
+-d --download           Url: to download from. [default: "http://lol.secure.dyn.riotcdn.net/channels/public"]
+-a --archive            Directory: to use as cache archive for bundles. [default: ""]
+-m --mode               Mode: of range downloading: full, one, multi. [default: <not representable>]
+-r --retry              Number: of retrys for failed bundles. [default: 0]
+-c --connections        Number: of connections per downloaded file. [default: 64]
+--curl-verbose          Curl: verbose logging. [default: false]
+--curl-buffer           Curl: buffer size in bytes [1024, 524288]. [default: 0]
+--curl-proxy            Curl: proxy. [default: ""]
+--curl-useragent        Curl: user agent string. [default: ""]
+--curl-cookiefile       Curl: cookie file or '-' to disable cookie engine. [default: ""]
+--curl-cookielist       Curl: cookie list string. [default: ""]
+```
 
 ```sh
 Usage: rman-bl.exe [options] manifest
@@ -103,6 +133,8 @@ Optional arguments:
 Usage: rman-ls.exe [options] manifest
 
 Lists files in manifest.
+Output is in CSV format as follows:
+Path,Size,ID,Lang1;Lang2;Lang3...
 
 Positional arguments:
 manifest                Manifest file to read from. [required]

@@ -10,6 +10,8 @@ using namespace rlib;
 struct Main {
     struct CLI {
         std::vector<std::string> inputs = {};
+        bool no_hash = {};
+        bool no_extract = {};
     } cli = {};
 
     auto parse_args(int argc, char** argv) -> void {
@@ -17,7 +19,16 @@ struct Main {
         program.add_description("Checks one or more bundles for errors.");
         program.add_argument("input").help("Bundle file or folder to read from.").remaining();
 
+        program.add_argument("--no-extract")
+            .help("Do not even attempt to extract chunk.")
+            .default_value(false)
+            .implicit_value(true);
+        program.add_argument("--no-hash").help("Do not verify hash.").default_value(false).implicit_value(true);
+
         program.parse_args(argc, argv);
+
+        cli.no_hash = program.get<bool>("--no-extract");
+        cli.no_extract = program.get<bool>("--no-hash");
 
         cli.inputs = program.get<std::vector<std::string>>("input");
     }
@@ -47,21 +58,31 @@ struct Main {
 
     auto verify_bundle(fs::path const& path) -> void {
         try {
+            rlib_trace("path: %s\n", path.generic_string().c_str());
+            printf("Start %s\n", path.filename().generic_string().c_str());
             auto infile = IOFile(path, false);
             auto bundle = RBUN::read(infile, true);
-            printf("Start(%s)\n", path.filename().generic_string().c_str());
+            printf(" ... ");
             for (std::uint64_t offset = 0; auto const& chunk : bundle.chunks) {
                 rlib_assert(in_range(offset, chunk.compressed_size, bundle.toc_offset));
-                auto src = infile.copy(offset, chunk.compressed_size);
-                auto dst = try_zstd_decompress(src, chunk.uncompressed_size);
-                rlib_assert(dst.size() == chunk.uncompressed_size);
-                auto hash_type = RBUN::Chunk::hash_type(dst, chunk.chunkId);
-                rlib_assert(hash_type != HashType::None);
+                if (!cli.no_extract) {
+                    auto src = infile.copy(offset, chunk.compressed_size);
+                    auto dst = try_zstd_decompress(src, chunk.uncompressed_size);
+                    rlib_assert(dst.size() == chunk.uncompressed_size);
+                    if (!cli.no_hash) {
+                        auto hash_type = RBUN::Chunk::hash_type(dst, chunk.chunkId);
+                        rlib_assert(hash_type != HashType::None);
+                    }
+                }
                 offset += chunk.compressed_size;
             }
-            printf("Ok(%s)\n", path.filename().generic_string().c_str());
+            printf("Ok!\n");
         } catch (std::exception const& e) {
-            printf("Failed(%s): %s\n", path.filename().generic_string().c_str(), e.what());
+            printf("Failed!\n");
+            std::cerr << e.what() << std::endl;
+            for (auto const& error : error_stack()) {
+                std::cerr << error << std::endl;
+            }
             error_stack().clear();
         }
     }

@@ -105,6 +105,7 @@ struct Main {
 
     auto process_bundle(fs::path const& path) noexcept -> void {
         try {
+            rlib_trace("path: %s\n", path.generic_string().c_str());
             auto infile = IOFile(path, false);
             auto bundle = RBUN::read(infile, true);
             for (std::uint64_t offset = 0; auto const& chunk : bundle.chunks) {

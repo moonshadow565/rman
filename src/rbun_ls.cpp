@@ -14,7 +14,11 @@ struct Main {
 
     auto parse_args(int argc, char** argv) -> void {
         argparse::ArgumentParser program(fs::path(argv[0]).filename().generic_string());
-        program.add_description("Lists contents of one or more bundles.");
+        program.add_description(
+            "Lists contents of one or more bundles."
+            "\n"
+            "Output is in CSV format as follows:\n"
+            "BundlID,ChunkID,SizeCompressed,SizeUncompressed");
         program.add_argument("input").help("Bundle file or folder to read from.").remaining();
 
         program.parse_args(argc, argv);
@@ -47,6 +51,7 @@ struct Main {
 
     auto list_bundle(fs::path const& path) noexcept -> void {
         try {
+            rlib_trace("path: %s\n", path.generic_string().c_str());
             auto infile = IOFile(path, true);
             auto bundle = RBUN::read(infile);
             for (std::uint64_t offset = 0; auto const& chunk : bundle.chunks) {

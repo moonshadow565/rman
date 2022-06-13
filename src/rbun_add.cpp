@@ -63,9 +63,11 @@ struct Main {
 
     auto add_bundle(fs::path const& path, RCache& output) -> void {
         try {
+            rlib_trace("path: %s\n", path.generic_string().c_str());
+            printf("Start %s\n", path.filename().generic_string().c_str());
             auto infile = IOFile(path, false);
             auto bundle = RBUN::read(infile, true);
-            printf("Start(%s)\n", path.filename().generic_string().c_str());
+            printf(" ... ");
             for (std::uint64_t offset = 0; auto const& chunk : bundle.chunks) {
                 rlib_assert(in_range(offset, chunk.compressed_size, bundle.toc_offset));
                 auto src = infile.copy(offset, chunk.compressed_size);
@@ -76,9 +78,13 @@ struct Main {
                 offset += chunk.compressed_size;
                 output.add(chunk, src);
             }
-            printf("Ok(%s)\n", path.filename().generic_string().c_str());
+            printf("Ok!\n");
         } catch (std::exception const& e) {
-            printf("Failed(%s): %s\n", path.filename().generic_string().c_str(), e.what());
+            printf("Failed!\n");
+            std::cerr << e.what() << std::endl;
+            for (auto const& error : error_stack()) {
+                std::cerr << error << std::endl;
+            }
             error_stack().clear();
         }
     }
