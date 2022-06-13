@@ -1,0 +1,31 @@
+name: Release
+on:
+  push:
+    tags:
+      - "*-*-*-*"
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+    - name: "Clone source"
+      uses: actions/checkout@v2
+      with:
+        submodules: 'true'
+    - name: "Setup msvc"
+      uses: ilammy/msvc-dev-cmd@v1
+    - name: "Build"
+      run: |
+        mkdir build
+        cd build
+        cmake -G "NMake Makefiles" "-DCMAKE_BUILD_TYPE:STRING=Release" ..
+        cmake --build .
+    - name: "Package"
+      shell: bash
+      run: |
+        mkdir -p bin/
+        cp build/r*.exe bin/
+        7z a rman.zip bin/
+    - name: "Release"
+      uses: softprops/action-gh-release@v1
+      with:
+        files: rman.zip

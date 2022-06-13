@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <cinttypes>
 #include <cstddef>
 #include <span>

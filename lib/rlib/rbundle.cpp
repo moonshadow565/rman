@@ -3,6 +3,7 @@
 #include <common/xxhash.h>
 #include <zstd.h>
 
+#include <bit>
 #include <cstring>
 #include <digestpp.hpp>
 
