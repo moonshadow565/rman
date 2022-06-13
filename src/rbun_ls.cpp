@@ -56,7 +56,6 @@ struct Main {
             auto infile = IOFile(path, true);
             auto bundle = RBUN::read(infile);
             for (std::uint64_t offset = 0; auto const& chunk : bundle.chunks) {
-                if (!in_range(offset, chunk.compressed_size, bundle.toc_offset)) break;
                 std::cout                                    //
                     << to_hex(bundle.bundleId) << ','        //
                     << to_hex(chunk.chunkId) << ','          //

@@ -48,6 +48,12 @@ auto RBUN::read(IOFile const& file, bool no_lookup) -> RBUN {
             result.lookup[chunk.chunkId] = RChunk::Src{chunk, result.bundleId, compressed_offset};
             compressed_offset += chunk.compressed_size;
         }
+    } else {
+        for (std::uint64_t compressed_offset = 0; auto const& chunk : result.chunks) {
+            rlib_assert(in_range(compressed_offset, chunk.compressed_size, result.toc_offset));
+            rlib_assert(chunk.uncompressed_size <= RChunk::LIMIT);
+            rlib_assert(chunk.compressed_size <= ZSTD_compressBound(chunk.uncompressed_size));
+        }
     }
     return result;
 }

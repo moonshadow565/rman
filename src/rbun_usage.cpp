@@ -110,7 +110,6 @@ struct Main {
             auto infile = IOFile(path, false);
             auto bundle = RBUN::read(infile, true);
             for (std::uint64_t offset = 0; auto const& chunk : bundle.chunks) {
-                if (!in_range(offset, chunk.compressed_size, bundle.toc_offset)) break;
                 auto& usage = usage_per_chunk[chunk.chunkId];
                 usage.count += 1;
                 usage.size_uncompressed = chunk.uncompressed_size;

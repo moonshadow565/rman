@@ -1,26 +1,31 @@
 #include <argparse.hpp>
+#include <charconv>
 #include <iostream>
 #include <rlib/common.hpp>
 #include <rlib/iofile.hpp>
 #include <rlib/rbundle.hpp>
+#include <unordered_set>
 
 using namespace rlib;
 
 struct Main {
     struct CLI {
+        std::string output = {};
         std::vector<std::string> inputs = {};
+        bool force = {};
         bool no_hash = {};
-        bool no_extract = {};
         bool no_progress = {};
     } cli = {};
+    std::unordered_map<ChunkID, std::size_t> seen = {};
 
     auto parse_args(int argc, char** argv) -> void {
         argparse::ArgumentParser program(fs::path(argv[0]).filename().generic_string());
-        program.add_description("Checks one or more bundles for errors.");
+        program.add_description("Extracts one or more bundles.");
+        program.add_argument("output").help("Directory to write chunks into.").required();
         program.add_argument("input").help("Bundle file(s) or folder(s) to read from.").remaining().required();
 
-        program.add_argument("--no-extract")
-            .help("Do not even attempt to extract chunk.")
+        program.add_argument("--force")
+            .help("Force overwrite existing files.")
             .default_value(false)
             .implicit_value(true);
         program.add_argument("--no-hash").help("Do not verify hash.").default_value(false).implicit_value(true);
@@ -31,10 +36,11 @@ struct Main {
 
         program.parse_args(argc, argv);
 
-        cli.no_hash = program.get<bool>("--no-extract");
-        cli.no_extract = program.get<bool>("--no-hash");
+        cli.force = program.get<bool>("--force");
+        cli.no_hash = program.get<bool>("--no-hash");
         cli.no_progress = program.get<bool>("--no-progress");
 
+        cli.output = program.get<std::string>("output");
         cli.inputs = program.get<std::vector<std::string>>("input");
     }
 
@@ -57,6 +63,22 @@ struct Main {
                 }
             }
         }
+        if (!paths.empty()) {
+            std::cerr << "Processing existing chunks ... " << std::endl;
+            fs::create_directories(cli.output);
+            for (auto const& entry : fs::directory_iterator(cli.output)) {
+                if (!entry.is_regular_file()) {
+                    continue;
+                }
+                if (entry.path().extension() != ".chunk") {
+                    continue;
+                }
+                auto name = entry.path().filename().replace_extension("").generic_string();
+                if (auto id = from_hex<ChunkID>(name)) {
+                    seen[*id] = entry.file_size();
+                }
+            }
+        }
         std::cerr << "Processing input bundles ... " << std::endl;
         for (std::uint32_t index = paths.size(); auto const& path : paths) {
             verify_bundle(path, index--);
@@ -71,20 +93,19 @@ struct Main {
             auto bundle = RBUN::read(infile, true);
             {
                 std::uint64_t offset = 0;
-                progress_bar p("VERIFIED", cli.no_progress, index, offset, bundle.toc_offset);
+                progress_bar p("EXTRACTED", cli.no_progress, index, offset, bundle.toc_offset);
                 for (auto const& chunk : bundle.chunks) {
-                    if (!cli.no_extract) {
+                    if (!seen.contains(chunk.chunkId)) {
                         auto src = infile.copy(offset, chunk.compressed_size);
                         auto dst = zstd_decompress(src, chunk.uncompressed_size);
                         if (!cli.no_hash) {
                             auto hash_type = RChunk::hash_type(dst, chunk.chunkId);
                             rlib_assert(hash_type != HashType::None);
                         }
-                    } else {
-                        char zstd_header[32];
-                        std::size_t header_size = std::min(chunk.compressed_size, 32u);
-                        rlib_assert(infile.read(offset, {zstd_header, header_size}));
-                        rlib_assert(zstd_frame_decompress_size({zstd_header, header_size}) == chunk.uncompressed_size);
+                        auto outfile = IOFile(fs::path(cli.output) / (to_hex(chunk.chunkId) + ".chunk"), true);
+                        outfile.resize(0, 0);
+                        outfile.write(0, dst, true);
+                        seen[chunk.chunkId] = dst.size();
                     }
                     offset += chunk.compressed_size;
                     p.update(offset);

@@ -63,6 +63,16 @@ namespace rlib {
 
     extern void push_error_msg(char const* fmt, ...) noexcept;
 
+    template <typename Func>
+    struct ErrorTrace : Func {
+        inline ErrorTrace(Func&& func) noexcept : Func(std::move(func)) {}
+        inline ~ErrorTrace() noexcept {
+            if (std::uncaught_exceptions()) {
+                Func::operator()();
+            }
+        }
+    };
+
     struct progress_bar {
         static constexpr auto MB = 1024.0 * 1024.0;
 
@@ -86,20 +96,23 @@ namespace rlib {
         std::uint64_t percent_;
     };
 
-    template <typename Func>
-    struct ErrorTrace : Func {
-        inline ErrorTrace(Func&& func) noexcept : Func(std::move(func)) {}
-        inline ~ErrorTrace() noexcept {
-            if (std::uncaught_exceptions()) {
-                Func::operator()();
-            }
-        }
-    };
     extern auto to_hex(std::uint64_t id, std::size_t s = 16) noexcept -> std::string;
 
     template <typename T>
         requires(std::is_enum_v<T>)
     inline auto to_hex(T id, std::size_t s = 16) noexcept -> std::string { return to_hex((std::uint64_t)id, s); }
+
+    extern auto from_hex(std::string_view name) noexcept -> std::optional<std::uint64_t>;
+
+    template <typename T>
+        requires(std::is_enum_v<T>)
+    inline auto from_hex(std::string_view name) noexcept -> std::optional<T> {
+        if (auto result = from_hex(name)) {
+            return (T)*result;
+        } else {
+            return std::nullopt;
+        }
+    }
 
     extern auto clean_path(std::string path) noexcept -> std::string;
 

@@ -2,6 +2,7 @@
 
 #include <zstd.h>
 
+#include <charconv>
 #include <cstdarg>
 #include <cstdio>
 #include <iomanip>
@@ -70,6 +71,18 @@ auto rlib::to_hex(std::uint64_t id, std::size_t s) noexcept -> std::string {
     }
     return std::string(result, s);
 };
+
+auto rlib::from_hex(std::string_view name) noexcept -> std::optional<std::uint64_t> {
+    auto result = std::uint64_t{};
+    auto [p, ec] = std::from_chars(name.data(), name.data() + name.size(), result, 16);
+    if (ec != std::errc{}) {
+        return std::nullopt;
+    }
+    if (p != name.data() + name.size()) {
+        return std::nullopt;
+    }
+    return result;
+}
 
 auto rlib::clean_path(std::string path) noexcept -> std::string {
     std::replace(path.begin(), path.end(), '\\', '/');

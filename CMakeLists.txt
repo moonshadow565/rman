@@ -38,6 +38,9 @@ target_link_libraries(rman-bl PRIVATE rlib)
 add_executable(rbun-chk src/rbun_chk.cpp)
 target_link_libraries(rbun-chk PRIVATE rlib)
 
+add_executable(rbun-ex src/rbun_ex.cpp)
+target_link_libraries(rbun-ex PRIVATE rlib)
+
 add_executable(rbun-ls src/rbun_ls.cpp)
 target_link_libraries(rbun-ls PRIVATE rlib)
 

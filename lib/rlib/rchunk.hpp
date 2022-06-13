@@ -34,6 +34,7 @@ namespace rlib {
     struct RChunk::Src : RChunk {
         BundleID bundleId;
         std::uint64_t compressed_offset;
+        using data_cb = function_ref<void(RChunk::Src const& chunk, std::span<char const> data)>;
     };
 
     struct RChunk::Dst : RChunk::Src {

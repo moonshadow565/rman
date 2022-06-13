@@ -17,6 +17,23 @@ Optional arguments:
 ```
 
 ```sh
+Usage: rbun-ex.exe [options] output input 
+
+Extracts one or more bundles.
+
+Positional arguments:
+output        	Directory to write chunks into. [required]
+input         	Bundle file(s) or folder(s) to read from. [required]
+
+Optional arguments:
+-h --help     	shows help message and exits [default: false]
+-v --version  	prints version information and exits [default: false]
+--force       	Force overwrite existing files. [default: false]
+--no-hash     	Do not verify hash. [default: false]
+--no-progress 	Do not print progress to cerr. [default: false]
+```
+
+```sh
 Usage: rbun-ls.exe [options] input 
 
 Lists contents of one or more bundles.
