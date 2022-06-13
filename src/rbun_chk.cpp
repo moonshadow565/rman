@@ -13,7 +13,8 @@ struct Main {
     } cli = {};
 
     auto parse_args(int argc, char** argv) -> void {
-        argparse::ArgumentParser program("rman-bl");
+        argparse::ArgumentParser program(fs::path(argv[0]).filename().generic_string());
+        program.add_description("Checks one or more bundles for errors.");
         program.add_argument("input").help("Bundle file or folder to read from.").remaining();
 
         program.parse_args(argc, argv);

@@ -133,11 +133,6 @@ auto IOFile::write(std::uint64_t offset, std::span<char const> src, bool no_inte
         return false;
     }
     NoInterupt no_interupt_lock(no_interupt);
-    if (write_end > impl_.size) {
-        if (!resize(0, write_end)) {
-            return false;
-        }
-    }
     while (!src.empty()) {
         DWORD wanted = (DWORD)std::min(CHUNK, src.size());
         OVERLAPPED off = {.Offset = (std::uint32_t)offset, .OffsetHigh = (std::uint32_t)(offset >> 32)};
@@ -151,6 +146,9 @@ auto IOFile::write(std::uint64_t offset, std::span<char const> src, bool no_inte
         }
         src = src.subspan(got);
         offset += got;
+    }
+    if (write_end > impl_.size) {
+        impl_.size = write_end;
     }
     return true;
 }

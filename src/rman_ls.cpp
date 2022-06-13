@@ -14,7 +14,8 @@ struct Main {
     } cli = {};
 
     auto parse_args(int argc, char** argv) -> void {
-        argparse::ArgumentParser program("rman-dl");
+        argparse::ArgumentParser program(fs::path(argv[0]).filename().generic_string());
+        program.add_description("Lists files in manifest.");
         program.add_argument("manifest").help("Manifest file to read from.").required();
 
         program.add_argument("-l", "--filter-lang")

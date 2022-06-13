@@ -16,12 +16,13 @@ struct Main {
     } cli = {};
 
     auto parse_args(int argc, char** argv) -> void {
-        argparse::ArgumentParser program("rman-bl");
+        argparse::ArgumentParser program(fs::path(argv[0]).filename().generic_string());
+        program.add_description("Adds one or more bundles into first first bundle.");
         program.add_argument("output").help("Bundle file to write into.").required();
         program.add_argument("input").help("Bundle file or folder to write from.").remaining();
         program.add_argument("--buffer")
             .help("Size for buffer before flush to disk in killobytes [64, 1048576]")
-            .default_value(std::uint32_t{32 * 1024 * 1024u})  // 32MB by default, min 64KB, max 1GB
+            .default_value(std::uint32_t{32 * 1024 * 1024u})
             .action([](std::string const& value) -> std::uint32_t {
                 return std::clamp((std::uint32_t)std::stoul(value), 64u, 1024u * 1024) * 1024u;
             });

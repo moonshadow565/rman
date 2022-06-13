@@ -13,13 +13,11 @@ struct Main {
     } cli = {};
 
     auto parse_args(int argc, char** argv) -> void {
-        argparse::ArgumentParser program("rman-bl");
+        argparse::ArgumentParser program(fs::path(argv[0]).filename().generic_string());
+        program.add_description("Lists bundle names used in manifest.");
         program.add_argument("manifest").help("Manifest file to read from.").required();
 
         program.parse_args(argc, argv);
-
-        cli.filter.langs = program.get<std::optional<std::regex>>("-l");
-        cli.filter.path = program.get<std::optional<std::regex>>("-p");
 
         cli.manifest = program.get<std::string>("manifest");
     }

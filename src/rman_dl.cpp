@@ -24,7 +24,8 @@ struct Main {
     std::unique_ptr<RCDN> cdn = {};
 
     auto parse_args(int argc, char** argv) -> void {
-        argparse::ArgumentParser program("rman-dl");
+        argparse::ArgumentParser program(fs::path(argv[0]).filename().generic_string());
+        program.add_description("Downloads or repairs files in manifest.");
         // Common options
         program.add_argument("manifest").help("Manifest file to read from.").required();
         program.add_argument("output")
@@ -65,7 +66,8 @@ struct Main {
             .implicit_value(true);
         program.add_argument("--cache-buffer")
             .help("Size for cache buffer in killobytes [64, 1048576]")
-            .default_value(std::uint32_t{3})
+            .default_value(std::uint32_t{32 * 1024 * 1024})
+            .scan<'u', std::uint32_t>()
             .action([](std::string const& value) -> std::uint32_t {
                 return std::clamp((std::uint32_t)std::stoul(value), 64u, 1024u * 1024) * 1024u;
             });
