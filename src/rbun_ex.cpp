@@ -12,11 +12,12 @@ struct Main {
     struct CLI {
         std::string output = {};
         std::vector<std::string> inputs = {};
+        bool with_offset = {};
         bool force = {};
         bool no_hash = {};
         bool no_progress = {};
     } cli = {};
-    std::unordered_map<ChunkID, std::size_t> seen = {};
+    std::unordered_set<std::string> seen = {};
 
     auto parse_args(int argc, char** argv) -> void {
         argparse::ArgumentParser program(fs::path(argv[0]).filename().generic_string());
@@ -24,7 +25,8 @@ struct Main {
         program.add_argument("output").help("Directory to write chunks into.").required();
         program.add_argument("input").help("Bundle file(s) or folder(s) to read from.").remaining().required();
 
-        program.add_argument("--force")
+        program.add_argument("--with-offset").help("Put hex offset in name.").default_value(false).implicit_value(true);
+        program.add_argument("-f", "--force")
             .help("Force overwrite existing files.")
             .default_value(false)
             .implicit_value(true);
@@ -36,6 +38,7 @@ struct Main {
 
         program.parse_args(argc, argv);
 
+        cli.with_offset = program.get<bool>("--with-offset");
         cli.force = program.get<bool>("--force");
         cli.no_hash = program.get<bool>("--no-hash");
         cli.no_progress = program.get<bool>("--no-progress");
@@ -63,7 +66,7 @@ struct Main {
                 }
             }
         }
-        if (!paths.empty()) {
+        if (!paths.empty() && !cli.force) {
             std::cerr << "Processing existing chunks ... " << std::endl;
             fs::create_directories(cli.output);
             for (auto const& entry : fs::directory_iterator(cli.output)) {
@@ -73,10 +76,7 @@ struct Main {
                 if (entry.path().extension() != ".chunk") {
                     continue;
                 }
-                auto name = entry.path().filename().replace_extension("").generic_string();
-                if (auto id = from_hex<ChunkID>(name)) {
-                    seen[*id] = entry.file_size();
-                }
+                seen.insert(entry.path().filename().generic_string());
             }
         }
         std::cerr << "Processing input bundles ... " << std::endl;
@@ -95,17 +95,21 @@ struct Main {
                 std::uint64_t offset = 0;
                 progress_bar p("EXTRACTED", cli.no_progress, index, offset, bundle.toc_offset);
                 for (auto const& chunk : bundle.chunks) {
-                    if (!seen.contains(chunk.chunkId)) {
+                    auto name = to_hex(chunk.chunkId) + ".chunk";
+                    if (cli.with_offset) {
+                        name = to_hex(offset) + "-" + name;
+                    }
+                    if (!seen.contains(name)) {
                         auto src = infile.copy(offset, chunk.compressed_size);
                         auto dst = zstd_decompress(src, chunk.uncompressed_size);
                         if (!cli.no_hash) {
                             auto hash_type = RChunk::hash_type(dst, chunk.chunkId);
                             rlib_assert(hash_type != HashType::None);
                         }
-                        auto outfile = IOFile(fs::path(cli.output) / (to_hex(chunk.chunkId) + ".chunk"), true);
-                        outfile.resize(0, 0);
+                        auto outfile = IOFile(fs::path(cli.output) / name, true);
+                        outfile.resize(0, dst.size());
                         outfile.write(0, dst, true);
-                        seen[chunk.chunkId] = dst.size();
+                        seen.insert(std::move(name));
                     }
                     offset += chunk.compressed_size;
                     p.update(offset);
