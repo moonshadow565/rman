@@ -5,7 +5,6 @@
 #include <charconv>
 
 #include "common.hpp"
-#include "error.hpp"
 
 using namespace rlib;
 
@@ -17,9 +16,10 @@ RCache::RCache(Options const& options) : file_(options.path, !options.readonly),
     }
     bundle_ = RBUN::read(file_);
 }
+
 RCache::~RCache() { this->flush(); }
 
-auto RCache::add(RBUN::Chunk const& chunk, std::span<char const> data) -> bool {
+auto RCache::add(RChunk const& chunk, std::span<char const> data) -> bool {
     if (!can_write() || bundle_.lookup.contains(chunk.chunkId)) {
         return false;
     }
@@ -37,17 +37,16 @@ auto RCache::add(RBUN::Chunk const& chunk, std::span<char const> data) -> bool {
 
 auto RCache::contains(ChunkID chunkId) const noexcept -> bool { return bundle_.lookup.contains(chunkId); }
 
-auto RCache::run(std::vector<RBUN::ChunkDst> chunks, done_cb done, yield_cb yield) const
-    -> std::vector<RBUN::ChunkDst> {
-    sort_by<&RBUN::ChunkDst::chunkId, &RBUN::ChunkDst::uncompressed_offset>(chunks.begin(), chunks.end());
+auto RCache::uncache(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) const -> std::vector<RChunk::Dst> {
+    sort_by<&RChunk::Dst::chunkId, &RChunk::Dst::uncompressed_offset>(chunks.begin(), chunks.end());
     auto lastId = ChunkID::None;
     auto dst = std::span<char const>{};
-    remove_if(chunks, [&](RBUN::ChunkDst const& chunk) mutable {
+    remove_if(chunks, [&](RChunk::Dst const& chunk) mutable {
         if (chunk.chunkId == ChunkID::None) {
             return false;
         }
         if (chunk.chunkId == lastId) {
-            done(chunk, dst);
+            on_data(chunk, dst);
             return true;
         }
         auto i = bundle_.lookup.find(chunk.chunkId);
@@ -63,8 +62,7 @@ auto RCache::run(std::vector<RBUN::ChunkDst> chunks, done_cb done, yield_cb yiel
             src = file_.copy(c.compressed_offset, c.compressed_size);
         }
         dst = zstd_decompress(src, c.uncompressed_size);
-        done(chunk, dst);
-        if (yield) yield();
+        on_data(chunk, dst);
         lastId = chunk.chunkId;
         return true;
     });
@@ -76,7 +74,7 @@ auto RCache::flush() -> bool {
     if (!can_write() || (buffer_.empty() && bundle_.toc_offset != 0)) {
         return false;
     }
-    auto toc_size = sizeof(RBUN::Chunk) * bundle_.chunks.size();
+    auto toc_size = sizeof(RChunk) * bundle_.chunks.size();
     RBUN::Footer footer = {
         .checksum = std::bit_cast<std::array<char, 8>>(XXH64((char const*)bundle_.chunks.data(), toc_size, 0)),
         .entry_count = (std::uint32_t)bundle_.chunks.size(),

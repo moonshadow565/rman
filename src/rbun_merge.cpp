@@ -1,7 +1,6 @@
 #include <argparse.hpp>
-#include <cstdio>
+#include <iostream>
 #include <rlib/common.hpp>
-#include <rlib/error.hpp>
 #include <rlib/iofile.hpp>
 #include <rlib/rbundle.hpp>
 #include <rlib/rcache.hpp>
@@ -12,6 +11,9 @@ struct Main {
     struct CLI {
         std::string output = {};
         std::vector<std::string> inputs = {};
+        bool no_hash = {};
+        bool no_extract = {};
+        bool no_progress = {};
         std::uint32_t buffer = {};
     } cli = {};
 
@@ -19,7 +21,18 @@ struct Main {
         argparse::ArgumentParser program(fs::path(argv[0]).filename().generic_string());
         program.add_description("Adds one or more bundles into first first bundle.");
         program.add_argument("output").help("Bundle file to write into.").required();
-        program.add_argument("input").help("Bundle file or folder to write from.").remaining();
+        program.add_argument("input").help("Bundle file(s) or folder to write from.").remaining().required();
+
+        program.add_argument("--no-extract")
+            .help("Do not even attempt to extract chunk.")
+            .default_value(false)
+            .implicit_value(true);
+        program.add_argument("--no-hash").help("Do not verify hash.").default_value(false).implicit_value(true);
+        program.add_argument("--no-progress")
+            .help("Do not print progress to cerr.")
+            .default_value(false)
+            .implicit_value(true);
+
         program.add_argument("--buffer")
             .help("Size for buffer before flush to disk in killobytes [64, 1048576]")
             .default_value(std::uint32_t{32 * 1024 * 1024u})
@@ -31,11 +44,15 @@ struct Main {
 
         cli.output = program.get<std::string>("output");
         cli.inputs = program.get<std::vector<std::string>>("input");
+        cli.no_hash = program.get<bool>("--no-extract");
+        cli.no_extract = program.get<bool>("--no-hash");
+        cli.no_progress = program.get<bool>("--no-progress");
         cli.buffer = program.get<std::uint32_t>("--buffer");
     }
 
     auto run() {
         auto paths = std::vector<fs::path>();
+        std::cerr << "Collecting input bundles ... " << std::endl;
         for (auto const& input : cli.inputs) {
             rlib_assert(fs::exists(input));
             if (fs::is_regular_file(input)) {
@@ -55,32 +72,42 @@ struct Main {
         if (paths.empty()) {
             return;
         }
+        std::cerr << "Processing output bundle ... " << std::endl;
         auto output = RCache(RCache::Options{.path = cli.output, .readonly = false, .flush_size = cli.buffer});
-        for (auto const& path : paths) {
-            add_bundle(path, output);
+        std::cerr << "Processing input bundles ... " << std::endl;
+        for (std::uint32_t index = paths.size(); auto const& path : paths) {
+            add_bundle(path, output, index--);
         }
     }
 
-    auto add_bundle(fs::path const& path, RCache& output) -> void {
+    auto add_bundle(fs::path const& path, RCache& output, std::uint32_t index) -> void {
         try {
-            rlib_trace("path: %s\n", path.generic_string().c_str());
-            printf("Start %s\n", path.filename().generic_string().c_str());
+            rlib_trace("path: %s", path.generic_string().c_str());
+            std::cout << "START:" << path.filename().generic_string() << std::endl;
             auto infile = IOFile(path, false);
             auto bundle = RBUN::read(infile, true);
-            printf(" ... ");
-            for (std::uint64_t offset = 0; auto const& chunk : bundle.chunks) {
-                rlib_assert(in_range(offset, chunk.compressed_size, bundle.toc_offset));
-                auto src = infile.copy(offset, chunk.compressed_size);
-                auto dst = try_zstd_decompress(src, chunk.uncompressed_size);
-                rlib_assert(dst.size() == chunk.uncompressed_size);
-                auto hash_type = RBUN::Chunk::hash_type(dst, chunk.chunkId);
-                rlib_assert(hash_type != HashType::None);
-                offset += chunk.compressed_size;
-                output.add(chunk, src);
+            {
+                std::uint64_t offset = 0;
+                progress_bar p("VERIFIED", cli.no_progress, index, offset, bundle.toc_offset);
+                for (auto const& chunk : bundle.chunks) {
+                    rlib_assert(in_range(offset, chunk.compressed_size, bundle.toc_offset));
+                    auto src = infile.copy(offset, chunk.compressed_size);
+                    rlib_assert(zstd_frame_decompress_size(src) == chunk.uncompressed_size);
+                    if (!cli.no_extract) {
+                        auto dst = zstd_decompress(src, chunk.uncompressed_size);
+                        if (!cli.no_hash) {
+                            auto hash_type = RChunk::hash_type(dst, chunk.chunkId);
+                            rlib_assert(hash_type != HashType::None);
+                        }
+                    }
+                    output.add(chunk, src);
+                    offset += chunk.compressed_size;
+                    p.update(offset);
+                }
             }
-            printf("Ok!\n");
+            std::cout << " OK!" << std::endl;
         } catch (std::exception const& e) {
-            printf("Failed!\n");
+            std::cout << " FAIL!" << std::endl;
             std::cerr << e.what() << std::endl;
             for (auto const& error : error_stack()) {
                 std::cerr << error << std::endl;

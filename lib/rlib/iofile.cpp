@@ -5,7 +5,7 @@
 #include <cstring>
 #include <stdexcept>
 
-#include "error.hpp"
+#include "common.hpp"
 
 using namespace rlib;
 

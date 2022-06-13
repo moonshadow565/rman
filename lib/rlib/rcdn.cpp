@@ -6,7 +6,7 @@
 #include <cstring>
 #include <map>
 
-#include "error.hpp"
+#include "common.hpp"
 
 using namespace rlib;
 
@@ -49,7 +49,7 @@ struct RCDN::Worker {
         }
     }
 
-    auto start(std::span<RBUN::ChunkDst const>& chunks_queue, done_cb done) -> void* {
+    auto start(std::span<RChunk::Dst const>& chunks_queue, RChunk::Dst::data_cb on_data) -> void* {
         auto chunks = find_chunks(chunks_queue);
         auto start = std::to_string(chunks.front().compressed_offset);
         auto end = std::to_string(chunks.back().compressed_offset + chunks.back().compressed_size - 1);
@@ -59,16 +59,16 @@ struct RCDN::Worker {
         rlib_assert(curl_easy_setopt(handle_, CURLOPT_RANGE, range.c_str()) == CURLE_OK);
         buffer_.clear();
         chunks_ = chunks;
-        done_ = done;
+        on_data_ = on_data;
         chunks_queue = chunks_queue.subspan(chunks.size());
         return handle_;
     }
 
-    auto finish(std::vector<RBUN::ChunkDst>& chunks_failed) -> void* {
+    auto finish(std::vector<RChunk::Dst>& chunks_failed) -> void* {
         chunks_failed.insert(chunks_failed.end(), chunks_.begin(), chunks_.end());
         buffer_.clear();
         chunks_ = {};
-        done_ = {};
+        on_data_ = {};
         return handle_;
     }
 
@@ -76,8 +76,8 @@ private:
     void* handle_;
     std::string url_;
     std::vector<char> buffer_;
-    std::span<RBUN::ChunkDst const> chunks_;
-    done_cb done_;
+    std::span<RChunk::Dst const> chunks_;
+    RChunk::Dst::data_cb on_data_;
     RCache* cache_out_;
 
     auto recieve(std::span<char const> recv) -> bool {
@@ -107,20 +107,19 @@ private:
         return true;
     }
 
-    auto decompress(RBUN::ChunkDst const& chunk, std::span<char const> src) -> bool {
+    auto decompress(RChunk::Dst const& chunk, std::span<char const> src) -> bool {
         src = src.subspan(0, chunk.compressed_size);
-        auto dst = try_zstd_decompress(src, chunk.uncompressed_size);
-        if (dst.size() != chunk.uncompressed_size) {
-            return false;
-        }
-        if (chunk.hash(dst, chunk.hash_type) != chunk.chunkId) {
-            return false;
-        }
+        //        if (src.size() < 5 || std::memcmp(src.data(), "\x28\xB5\x2F\xFD", 4) != 0) {
+        //            return false;
+        //        }
+        rlib_trace("BundleID: %016llx, ChunkID: %016llx\n", chunk.bundleId, chunk.chunkId);
+        auto dst = zstd_decompress(src, chunk.uncompressed_size);
+        rlib_assert(chunk.hash(dst, chunk.hash_type) == chunk.chunkId);
         if (cache_out_) {
             cache_out_->add(chunk, src);
         }
         while (!chunks_.empty() && chunks_.front().chunkId == chunk.chunkId) {
-            done_(chunks_.front(), dst);
+            on_data_(chunks_.front(), dst);
             chunks_ = chunks_.subspan(1);
         }
         return true;
@@ -133,7 +132,7 @@ private:
         return 0;
     }
 
-    static auto find_chunks(std::span<RBUN::ChunkDst const> chunks) noexcept -> std::span<RBUN::ChunkDst const> {
+    static auto find_chunks(std::span<RChunk::Dst const> chunks) noexcept -> std::span<RChunk::Dst const> {
         std::size_t i = 1;
         for (; i != chunks.size(); ++i) {
             // 1. Consecutive chunks must be present in same bundle
@@ -153,15 +152,13 @@ private:
     }
 };
 
-RCDN::RCDN(Options const& options, RCache* cache_out) {
-    if (cache_out && !cache_out->can_write()) {
-        cache_out = nullptr;
-    }
+RCDN::RCDN(Options const& options, RCache* cache_out)
+    : options_(options), cache_out_(cache_out && cache_out->can_write() ? cache_out : nullptr) {
     static auto init = CurlInit{};
     handle_ = curl_multi_init();
     rlib_assert(handle_);
-    for (std::uint32_t i = std::clamp(options.workers, 1u, 64u); i; --i) {
-        workers_.push_back(std::make_unique<Worker>(options, cache_out));
+    for (std::uint32_t i = std::clamp(options_.workers, 1u, 64u); i; --i) {
+        workers_.push_back(std::make_unique<Worker>(options, cache_out_));
     }
 }
 
@@ -171,58 +168,59 @@ RCDN::~RCDN() noexcept {
     }
 }
 
-auto RCDN::run(std::vector<RBUN::ChunkDst> chunks, done_cb callback, yield_cb yield, int delay)
-    -> std::vector<RBUN::ChunkDst> {
-    sort_by<&RBUN::ChunkDst::bundleId, &RBUN::ChunkDst::compressed_offset, &RBUN::ChunkDst::uncompressed_offset>(
-        chunks.begin(),
-        chunks.end());
+auto RCDN::download(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) -> std::vector<RChunk::Dst> {
+    for (std::uint32_t retry = options_.retry; !chunks.empty() && retry; --retry) {
+        sort_by<&RChunk::Dst::bundleId, &RChunk::Dst::compressed_offset, &RChunk::Dst::uncompressed_offset>(
+            chunks.begin(),
+            chunks.end());
 
-    auto chunks_failed = std::vector<RBUN::ChunkDst>{};
-    auto chunks_queue = std::span<RBUN::ChunkDst const>(chunks);
-    auto workers_free = std::vector<Worker*>{};
-    for (auto const& worker : workers_) {
-        workers_free.push_back(worker.get());
-    }
-
-    for (std::size_t workers_running = 0;;) {
-        if (yield) yield();
-
-        // Start new downloads
-        while (!workers_free.empty() && !chunks_queue.empty()) {
-            auto worker = workers_free.back();
-            auto handle = worker->start(chunks_queue, callback);
-            workers_free.pop_back();
-            ++workers_running;
-            rlib_assert(curl_multi_add_handle(handle_, handle) == CURLM_OK);
+        auto chunks_failed = std::vector<RChunk::Dst>{};
+        chunks_failed.reserve(chunks.size());
+        auto chunks_queue = std::span<RChunk::Dst const>(chunks);
+        auto workers_free = std::vector<Worker*>{};
+        for (auto const& worker : workers_) {
+            workers_free.push_back(worker.get());
         }
 
-        // Return if we ended.
-        if (!workers_running) {
-            break;
-        }
-
-        // Perform any actual work.
-        // NOTE: i do not trust still_running out variable, do our own bookkeeping instead.
-        int still_running = 0;
-        rlib_assert(curl_multi_perform(handle_, &still_running) == CURLM_OK);
-
-        // Process messages.
-        for (int msg_left = 0; auto msg = curl_multi_info_read(handle_, &msg_left);) {
-            if (msg->msg != CURLMSG_DONE || msg->easy_handle == nullptr) {
-                continue;
+        for (std::size_t workers_running = 0;;) {
+            // Start new downloads
+            while (!workers_free.empty() && !chunks_queue.empty()) {
+                auto worker = workers_free.back();
+                auto handle = worker->start(chunks_queue, on_data);
+                workers_free.pop_back();
+                ++workers_running;
+                rlib_assert(curl_multi_add_handle(handle_, handle) == CURLM_OK);
             }
-            auto worker = (Worker*)nullptr;
-            curl_easy_getinfo(msg->easy_handle, CURLINFO_PRIVATE, &worker);
-            rlib_assert(worker);
-            auto handle = worker->finish(chunks_failed);
-            workers_free.push_back(worker);
-            --workers_running;
-            rlib_assert(curl_multi_remove_handle(handle_, handle) == CURLM_OK);
+
+            // Return if we ended.
+            if (!workers_running) {
+                break;
+            }
+
+            // Perform any actual work.
+            // NOTE: i do not trust still_running out variable, do our own bookkeeping instead.
+            int still_running = 0;
+            rlib_assert(curl_multi_perform(handle_, &still_running) == CURLM_OK);
+
+            // Process messages.
+            for (int msg_left = 0; auto msg = curl_multi_info_read(handle_, &msg_left);) {
+                if (msg->msg != CURLMSG_DONE || msg->easy_handle == nullptr) {
+                    continue;
+                }
+                auto worker = (Worker*)nullptr;
+                curl_easy_getinfo(msg->easy_handle, CURLINFO_PRIVATE, &worker);
+                rlib_assert(worker);
+                auto handle = worker->finish(chunks_failed);
+                workers_free.push_back(worker);
+                --workers_running;
+                rlib_assert(curl_multi_remove_handle(handle_, handle) == CURLM_OK);
+            }
+
+            // Block untill end.
+            rlib_assert(curl_multi_wait(handle_, nullptr, 0, options_.interval, nullptr) == CURLM_OK);
         }
 
-        // Block untill end.
-        rlib_assert(curl_multi_wait(handle_, nullptr, 0, delay, nullptr) == CURLM_OK);
+        chunks = std::move(chunks_failed);
     }
-
-    return chunks_failed;
+    return chunks;
 }

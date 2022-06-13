@@ -1,7 +1,6 @@
 #include <argparse.hpp>
-#include <cstdio>
+#include <iostream>
 #include <rlib/common.hpp>
-#include <rlib/error.hpp>
 #include <rlib/iofile.hpp>
 #include <rlib/rmanifest.hpp>
 
@@ -57,9 +56,13 @@ struct Main {
         auto manifest = RMAN::read(infile.copy(0, infile.size()));
 
         for (auto const& rfile : manifest.files) {
-            if (!rfile.matches(cli.filter)) continue;
-            auto line = rfile.path + ',' + std::to_string(rfile.size) + ',' + to_hex(rfile.fileId) + ',' + rfile.langs;
-            puts(line.c_str());
+            if (!rfile.matches(cli.filter)) {
+                continue;
+            }
+            std::cout << rfile.path << ','                  //
+                      << std::to_string(rfile.size) << ','  //
+                      << to_hex(rfile.fileId) + ','         //
+                      << rfile.langs << std::endl;
         }
     }
 };

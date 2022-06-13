@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "rbundle.hpp"
+#include "rchunk.hpp"
 
 namespace rlib {
     namespace fs = std::filesystem;
@@ -39,11 +40,11 @@ namespace rlib {
             std::string path;
             std::string link;
             std::string langs;
-            std::vector<RBUN::ChunkDst> chunks;
+            std::vector<RChunk::Dst> chunks;
 
             auto matches(Filter const& filter) const noexcept -> bool;
 
-            auto verify(fs::path const& path, bool force = false) const -> std::optional<std::vector<RBUN::ChunkDst>>;
+            auto verify(fs::path const& path, RChunk::Dst::data_cb on_good) const -> std::vector<RChunk::Dst>;
         };
 
         ManifestID manifestId;

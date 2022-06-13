@@ -18,18 +18,15 @@ namespace rlib {
         RCache(Options const& options);
         ~RCache();
 
-        auto add(RBUN::Chunk const& chunk, std::span<char const> data) -> bool;
+        auto add(RChunk const& chunk, std::span<char const> data) -> bool;
 
         auto contains(ChunkID chunkId) const noexcept -> bool;
 
-        using done_cb = function_ref<void(RBUN::ChunkDst const& chunk, std::span<char const> data)>;
-        using yield_cb = function_ref<void()>;
-        auto run(std::vector<RBUN::ChunkDst> chunks, done_cb done, yield_cb yield) const -> std::vector<RBUN::ChunkDst>;
+        auto uncache(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb read) const -> std::vector<RChunk::Dst>;
 
         auto flush() -> bool;
 
         auto can_write() const noexcept -> bool { return file_ && !options_.readonly; }
-
     private:
         IOFile file_;
         Options options_;

@@ -11,14 +11,144 @@
 #include <unordered_set>
 
 #include "common.hpp"
-#include "error.hpp"
-#include "fbuffer.hpp"
 #include "iofile.hpp"
 
 using namespace rlib;
-using namespace rlib::fbuffer;
 
 struct RMAN::Raw {
+    struct Offset {
+        char const* beg = {};
+        std::int32_t cur = {};
+        std::int32_t end = {};
+
+        template <typename T>
+        inline T as() const {
+            auto result = T{};
+            from_offset(*this, result);
+            return result;
+        }
+
+        explicit inline operator bool() const noexcept { return beg != nullptr; }
+        inline bool operator!() const noexcept { return !operator bool(); }
+    };
+
+    struct Table {
+        Offset beg = {};
+        std::int32_t vtable_size = {};
+        std::int32_t struct_size = {};
+        std::vector<std::uint16_t> offsets = {};
+
+        inline Offset operator[](std::size_t index) const {
+            rlib_assert(beg);
+            auto voffset = index < offsets.size() ? offsets[index] : 0;
+            auto result = beg;
+            if (voffset) {
+                result.cur += voffset;
+            } else {
+                result.beg = nullptr;
+            }
+            return result;
+        }
+    };
+
+    template <typename T>
+        requires(std::is_arithmetic_v<T> || std::is_enum_v<T>)
+    static inline void from_offset(Offset offset, T& value) {
+        if (!offset) {
+            value = T{};
+            return;
+        }
+        T result;
+        rlib_assert(offset.cur >= 0 && offset.cur + (std::int32_t)sizeof(T) <= offset.end);
+        memcpy(&result, offset.beg + offset.cur, sizeof(T));
+        value = result;
+    }
+
+    static inline void from_offset(Offset offset, Offset& value) {
+        if (offset) {
+            auto relative_offset = offset.as<std::int32_t>();
+            if (relative_offset) {
+                offset.cur += relative_offset;
+                rlib_assert(offset.cur >= 0 && offset.cur <= offset.end);
+            } else {
+                value.beg = nullptr;
+            }
+        }
+        value = offset;
+    }
+
+    static inline void from_offset(Offset offset, std::string& value) {
+        offset = offset.as<Offset>();
+        if (!offset) {
+            return;
+        }
+        auto size = offset.as<std::int32_t>();
+        if (!size) {
+            return;
+        }
+        rlib_assert(size >= 0 && size <= 4096);
+        offset.cur += sizeof(std::int32_t);
+        rlib_assert(offset.cur + size <= offset.end);
+        value.resize((std::size_t)size);
+        memcpy(value.data(), offset.beg + offset.cur, (std::size_t)size);
+    }
+
+    static inline void from_offset(Offset offset, Table& value) {
+        offset = offset.as<Offset>();
+        rlib_assert(offset);
+        value.beg = offset;
+        auto relative_offset = offset.as<std::int32_t>();
+        offset.cur -= relative_offset;
+        rlib_assert(offset.cur >= 0 && offset.cur <= offset.end);
+        value.vtable_size = offset.as<std::uint16_t>();
+        rlib_assert(value.vtable_size >= 4 && value.vtable_size % 2 == 0);
+        rlib_assert(offset.cur + value.vtable_size <= offset.end);
+        offset.cur += sizeof(std::uint16_t);
+        value.struct_size = offset.as<std::uint16_t>();
+        offset.cur += sizeof(std::uint16_t);
+        auto members_size = value.vtable_size - 4;
+        value.offsets.resize(members_size / 2);
+        memcpy(value.offsets.data(), offset.beg + offset.cur, members_size);
+    }
+
+    template <typename T>
+        requires(std::is_arithmetic_v<T> || std::is_enum_v<T>)
+    static inline void from_offset(Offset offset, std::vector<T>& value) {
+        offset = offset.as<Offset>();
+        if (!offset) {
+            return;
+        }
+        auto size = offset.as<std::int32_t>();
+        if (!size) {
+            return;
+        }
+        rlib_assert(size >= 0);
+        offset.cur += sizeof(std::int32_t);
+        rlib_assert(offset.cur + size * (std::int32_t)sizeof(T) <= offset.end);
+        value.resize((std::size_t)size);
+        memcpy(value.data(), offset.beg + offset.cur, (std::size_t)size * sizeof(T));
+    }
+
+    template <typename T>
+    static inline void from_offset(Offset offset, std::vector<T>& value) {
+        offset = offset.as<Offset>();
+        if (!offset) {
+            return;
+        }
+        auto size = offset.as<std::int32_t>();
+        if (!size) {
+            return;
+        }
+        rlib_assert(size >= 0);
+        offset.cur += sizeof(std::int32_t);
+        rlib_assert(offset.cur + size * (std::int32_t)sizeof(std::int32_t) <= offset.end);
+        value.resize((std::size_t)size);
+        for (auto& item : value) {
+            from_offset(Offset{offset}, item);
+            offset.cur += 4;
+        }
+    }
+
     struct Header {
         static constexpr inline std::uint32_t MAGIC = 0x4e414d52u;
         std::uint32_t magic;
@@ -35,7 +165,7 @@ struct RMAN::Raw {
     std::unordered_map<std::uint64_t, std::string> lookup_dir_name;
     std::unordered_map<std::uint64_t, std::uint64_t> lookup_dir_parent;
     std::unordered_map<std::size_t, Params> lookup_params;
-    std::unordered_map<ChunkID, RBUN::ChunkSrc> lookup_chunk;
+    std::unordered_map<ChunkID, RChunk::Src> lookup_chunk;
     std::vector<RBUN> bundles;
     std::vector<RMAN::File> files;
 
@@ -125,14 +255,14 @@ private:
                 auto uncompressed_size = chunk_table[2].as<std::uint32_t>();
                 auto compressed_size = chunk_table[1].as<std::uint32_t>();
                 rlib_assert(chunkId != ChunkID::None);
-                rlib_assert(uncompressed_size <= RBUN::CHUNK_LIMIT);
+                rlib_assert(uncompressed_size <= RChunk::LIMIT);
                 rlib_assert(compressed_size <= ZSTD_compressBound(uncompressed_size));
-                auto chunk = RBUN::Chunk{
+                auto chunk = RChunk{
                     .chunkId = chunkId,
                     .uncompressed_size = uncompressed_size,
                     .compressed_size = compressed_size,
                 };
-                auto chunk_src = RBUN::ChunkSrc{chunk, bundle.bundleId, compressed_offset};
+                auto chunk_src = RChunk::Src{chunk, bundle.bundleId, compressed_offset};
                 bundle.chunks.push_back(chunk);
                 lookup_chunk[chunkId] = chunk_src;
                 compressed_offset += compressed_size;
@@ -169,25 +299,27 @@ private:
                 }
                 dirId = rlib_rethrow(lookup_dir_parent.at(dirId));
             }
-            auto langs = std::string{"none"};
+            auto langs = std::string{};
             for (std::size_t i = 0; i != 32; i++) {
                 rlib_trace("LangID: %u", (unsigned int)i);
                 if (!(locale_flags & (1ull << i))) {
                     continue;
                 }
-                if (auto const& name = rlib_rethrow(lookup_lang_name.at(i + 1)); name != "none") {
+                auto const& name = rlib_rethrow(lookup_lang_name.at(i + 1));
+                if (!langs.empty()) {
                     langs += ";";
-                    langs += name;
-                } else {
-                    langs += name;
                 }
+                langs += name;
             }
-            auto chunks = std::vector<RBUN::ChunkDst>{};
+            if (langs.empty()) {
+                langs = "none";
+            }
+            auto chunks = std::vector<RChunk::Dst>{};
             chunks.reserve(chunk_ids.size());
             for (std::uint64_t uncompressed_offset = 0; auto chunk_id : chunk_ids) {
                 rlib_trace("ChunkID: %016llX", (unsigned long long)chunk_id);
                 auto& chunk_src = rlib_rethrow(lookup_chunk.at(chunk_id));
-                auto chunk_dst = RBUN::ChunkDst{chunk_src, params.hash_type, uncompressed_offset};
+                auto chunk_dst = RChunk::Dst{chunk_src, params.hash_type, uncompressed_offset};
                 chunks.push_back(chunk_dst);
                 uncompressed_offset += chunk_dst.uncompressed_size;
                 rlib_assert(uncompressed_offset <= size);
@@ -230,34 +362,27 @@ auto RMAN::File::matches(Filter const& filter) const noexcept -> bool {
     return true;
 }
 
-auto RMAN::File::verify(fs::path const& path, bool force) const -> std::optional<std::vector<RBUN::ChunkDst>> {
-    if (!fs::exists(path) || force) {
+auto RMAN::File::verify(fs::path const& path, RChunk::Dst::data_cb on_data) const -> std::vector<RChunk::Dst> {
+    if (!fs::exists(path)) {
         return chunks;
     }
     auto infile = IOFile(path, false);
-    if (!infile) {
-        return chunks;
-    }
-    thread_local auto buffer = std::vector<char>();
-    auto bad = chunks;
-    remove_if(bad, [&, failfast = false](RBUN::ChunkDst const& chunk) mutable -> bool {
+    auto result = chunks;
+    remove_if(result, [&, failfast = false](RChunk::Dst const& chunk) mutable -> bool {
         if (failfast) {
             return false;
         }
-        buffer.clear();
-        buffer.resize(chunk.uncompressed_size);
-        if (!infile.read(chunk.uncompressed_offset, buffer)) {
+        if (!in_range(chunk.uncompressed_offset, chunk.uncompressed_size, infile.size())) {
             failfast = true;
             return false;
         }
-        auto id = RBUN::Chunk::hash(buffer, params.hash_type);
+        auto data = infile.copy(chunk.uncompressed_offset, chunk.uncompressed_size);
+        auto id = RChunk::hash(data, params.hash_type);
         if (id == chunk.chunkId) {
+            on_data(chunk, data);
             return true;
         }
         return false;
     });
-    if (bad.empty() && infile.size() == size) {
-        return std::nullopt;
-    }
-    return bad;
+    return result;
 }

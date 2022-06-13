@@ -10,10 +10,6 @@ add_subdirectory(dep)
 add_library(rlib STATIC
     lib/rlib/common.hpp
     lib/rlib/common.cpp
-    lib/rlib/error.cpp
-    lib/rlib/error.hpp
-    lib/rlib/fbuffer.cpp
-    lib/rlib/fbuffer.hpp
     lib/rlib/iofile.cpp
     lib/rlib/iofile.hpp
     lib/rlib/rbundle.cpp
@@ -22,6 +18,8 @@ add_library(rlib STATIC
     lib/rlib/rcache.cpp
     lib/rlib/rcdn.hpp
     lib/rlib/rcdn.cpp
+    lib/rlib/rchunk.hpp
+    lib/rlib/rchunk.cpp
     lib/rlib/rmanifest.cpp
     lib/rlib/rmanifest.hpp
 )
@@ -37,14 +35,14 @@ target_link_libraries(rman-ls PRIVATE rlib)
 add_executable(rman-bl src/rman_bl.cpp)
 target_link_libraries(rman-bl PRIVATE rlib)
 
-add_executable(rbun-add src/rbun_add.cpp)
-target_link_libraries(rbun-add PRIVATE rlib)
-
 add_executable(rbun-chk src/rbun_chk.cpp)
 target_link_libraries(rbun-chk PRIVATE rlib)
 
 add_executable(rbun-ls src/rbun_ls.cpp)
 target_link_libraries(rbun-ls PRIVATE rlib)
+
+add_executable(rbun-merge src/rbun_merge.cpp)
+target_link_libraries(rbun-merge PRIVATE rlib)
 
 add_executable(rbun-usage src/rbun_usage.cpp)
 target_link_libraries(rbun-usage PRIVATE rlib)

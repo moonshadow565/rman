@@ -1,7 +1,6 @@
 #include <argparse.hpp>
-#include <cstdio>
+#include <iostream>
 #include <rlib/common.hpp>
-#include <rlib/error.hpp>
 #include <rlib/iofile.hpp>
 #include <rlib/rbundle.hpp>
 
@@ -19,7 +18,7 @@ struct Main {
             "\n"
             "Output is in CSV format as follows:\n"
             "BundlID,ChunkID,SizeCompressed,SizeUncompressed");
-        program.add_argument("input").help("Bundle file or folder to read from.").remaining();
+        program.add_argument("input").help("Bundle file(s) or folder(s) to read from.").remaining().required();
 
         program.parse_args(argc, argv);
 
@@ -28,6 +27,7 @@ struct Main {
 
     auto run() -> void {
         auto paths = std::vector<fs::path>();
+        std::cerr << "Collecting input bundles ... " << std::endl;
         for (auto const& input : cli.inputs) {
             rlib_assert(fs::exists(input));
             if (fs::is_regular_file(input)) {
@@ -44,6 +44,7 @@ struct Main {
                 }
             }
         }
+        std::cerr << "Processing input bundles ... " << std::endl;
         for (auto const& path : paths) {
             list_bundle(path);
         }
@@ -51,16 +52,17 @@ struct Main {
 
     auto list_bundle(fs::path const& path) noexcept -> void {
         try {
-            rlib_trace("path: %s\n", path.generic_string().c_str());
+            rlib_trace("path: %s", path.generic_string().c_str());
             auto infile = IOFile(path, true);
             auto bundle = RBUN::read(infile);
             for (std::uint64_t offset = 0; auto const& chunk : bundle.chunks) {
                 if (!in_range(offset, chunk.compressed_size, bundle.toc_offset)) break;
-                printf("%016llx,%016llX,%llu,%llu\n",
-                       (unsigned long long)bundle.bundleId,
-                       (unsigned long long)chunk.chunkId,
-                       (unsigned long long)chunk.compressed_size,
-                       (unsigned long long)chunk.uncompressed_size);
+                std::cout                                    //
+                    << to_hex(bundle.bundleId) << ','        //
+                    << to_hex(chunk.chunkId) << ','          //
+                    << chunk.compressed_size << ','          //
+                    << chunk.uncompressed_size << std::endl  //
+                    ;
                 offset += chunk.compressed_size;
             }
         } catch (std::exception const& e) {

@@ -1,9 +1,9 @@
 #include <argparse.hpp>
-#include <cstdio>
+#include <iostream>
 #include <rlib/common.hpp>
-#include <rlib/error.hpp>
 #include <rlib/iofile.hpp>
 #include <rlib/rbundle.hpp>
+#include <unordered_map>
 #include <unordered_set>
 
 using namespace rlib;
@@ -22,7 +22,7 @@ struct Main {
     auto parse_args(int argc, char** argv) -> void {
         argparse::ArgumentParser program(fs::path(argv[0]).filename().generic_string());
         program.add_description("Collects size usage statistics on one or more bundle.");
-        program.add_argument("input").help("Bundle file(s) or folder to read from.").remaining();
+        program.add_argument("input").help("Bundle file(s) or folder(s) to read from.").remaining().required();
 
         program.parse_args(argc, argv);
 
@@ -31,6 +31,7 @@ struct Main {
 
     auto run() -> void {
         auto paths = std::vector<fs::path>();
+        std::cerr << "Collecting input bundles ... " << std::endl;
         for (auto const& input : cli.inputs) {
             rlib_assert(fs::exists(input));
             if (fs::is_regular_file(input)) {
@@ -47,11 +48,11 @@ struct Main {
                 }
             }
         }
-        printf("Processing bundles...");
+        std::cerr << "Processing input bundles ... " << std::endl;
         for (auto const& path : paths) {
             process_bundle(path);
         }
-        printf("Callculating usage...");
+        std::cerr << "Callculating usage ... " << std::endl;
         std::size_t total_count_all = 0;
         std::size_t total_count_uncompressed_uniq = 0;
         std::size_t total_count_compressed_uniq = 0;
@@ -105,7 +106,7 @@ struct Main {
 
     auto process_bundle(fs::path const& path) noexcept -> void {
         try {
-            rlib_trace("path: %s\n", path.generic_string().c_str());
+            rlib_trace("path: %s", path.generic_string().c_str());
             auto infile = IOFile(path, false);
             auto bundle = RBUN::read(infile, true);
             for (std::uint64_t offset = 0; auto const& chunk : bundle.chunks) {

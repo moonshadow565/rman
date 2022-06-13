@@ -1,7 +1,6 @@
 #include <argparse.hpp>
-#include <iomanip>
 #include <iostream>
-#include <rlib/error.hpp>
+#include <rlib/common.hpp>
 #include <rlib/iofile.hpp>
 #include <rlib/rcdn.hpp>
 #include <rlib/rmanifest.hpp>
@@ -15,7 +14,6 @@ struct Main {
         bool no_verify = {};
         bool no_write = {};
         bool no_progress = {};
-        std::uint32_t retry = {};
         RMAN::Filter filter = {};
         RCache::Options cache = {};
         RCDN::Options cdn = {};
@@ -88,6 +86,10 @@ struct Main {
             .action([](std::string const& value) -> std::uint32_t {
                 return std::clamp((std::uint32_t)std::stoul(value), 1u, 64u);
             });
+        program.add_argument("--cdn-interval")
+            .help("Curl poll interval in miliseconds.")
+            .default_value(int{100})
+            .action([](std::string const& value) -> int { return std::clamp((int)std::stoul(value), 0, 30000); });
         program.add_argument("--cdn-verbose").help("Curl: verbose logging.").default_value(false).implicit_value(true);
         program.add_argument("--cdn-buffer")
             .help("Curl buffer size in killobytes [1, 512].")
@@ -118,11 +120,12 @@ struct Main {
             .flush_size = program.get<std::uint32_t>("--cache-buffer"),
         };
 
-        cli.retry = program.get<std::uint32_t>("--cdn-retry");
         cli.cdn = {
             .url = clean_path(program.get<std::string>("--cdn")),
             .verbose = program.get<bool>("--cdn-verbose"),
             .buffer = program.get<long>("--cdn-buffer"),
+            .interval = program.get<int>("--cdn-interval"),
+            .retry = program.get<std::uint32_t>("--cdn-retry"),
             .workers = program.get<std::uint32_t>("--cdn-workers"),
             .proxy = program.get<std::string>("--cdn-proxy"),
             .useragent = program.get<std::string>("--cdn-useragent"),
@@ -151,65 +154,65 @@ struct Main {
             cdn = std::make_unique<RCDN>(cli.cdn, cache.get());
         }
 
-        for (auto const& rfile : manifest.files) {
-            if (!rfile.matches(cli.filter)) continue;
-            std::cout << "START: " << rfile.path << std::endl;
-            if (download_file(rfile)) {
-                std::cout << "OK: " << rfile.path << std::endl;
-            } else {
-                std::cout << "FAIL: " << rfile.path << std::endl;
-            }
+        remove_if(manifest.files, [&](RMAN::File const& rfile) { return !rfile.matches(cli.filter); });
+
+        for (std::uint32_t index = manifest.files.size(); auto const& rfile : manifest.files) {
+            download_file(rfile, index--);
         }
     }
 
-    auto download_file(RMAN::File const& rfile) -> bool {
-        rlib_trace("Path: %s", rfile.path.c_str());
-        auto bad_chunks = rfile.verify(fs::path(cli.output) / rfile.path, cli.no_verify);
-        if (!bad_chunks) {
-            return true;
+    auto download_file(RMAN::File const& rfile, std::uint32_t index) -> void {
+        std::cout << "START: " << rfile.path << std::endl;
+        auto path = fs::path(cli.output) / rfile.path;
+        rlib_trace("Path: %s", path.generic_string().c_str());
+        auto done = std::uint64_t{};
+        auto bad_chunks = std::vector<RChunk::Dst>{};
+
+        if (!cli.no_verify) {
+            progress_bar p("VERIFIED", cli.no_progress, index, done, rfile.size);
+            bad_chunks = rfile.verify(path, [&](RChunk::Dst const& chunk, std::span<char const> data) {
+                done += chunk.uncompressed_size;
+                p.update(done);
+            });
+        } else {
+            bad_chunks = rfile.chunks;
         }
 
         auto outfile = IOFile();
         if (!cli.no_write) {
-            outfile = IOFile(fs::path(cli.output) / rfile.path, true);
+            outfile = IOFile(path, true);
             rlib_assert(outfile.resize(0, rfile.size));
         }
 
-        auto done = std::uint64_t{};
-        auto total = std::uint64_t{};
-        for (auto const& chunk : *bad_chunks) total += chunk.uncompressed_size;
-
-        if (!bad_chunks->empty() && cache) {
-            auto yield_func = [&] { std::cout << progress("\rUNCACHED", 0, done, total) << std::flush; };
-            yield_func();
-            bad_chunks = cache->run(
-                std::move(*bad_chunks),
-                [&](RBUN::ChunkDst const& chunk, std::span<char const> data) {
+        if (!bad_chunks.empty() && cache) {
+            progress_bar p("UNCACHED", cli.no_progress, index, done, rfile.size);
+            bad_chunks =
+                cache->uncache(std::move(bad_chunks), [&](RChunk::Dst const& chunk, std::span<char const> data) {
                     if (outfile) {
                         rlib_assert(outfile.write(chunk.uncompressed_offset, data));
                     }
                     done += chunk.uncompressed_size;
-                },
-                cli.no_progress ? RCache::yield_cb() : yield_func);
+                    p.update(done);
+                });
         }
 
-        for (std::uint32_t retry = 1; !bad_chunks->empty() && cdn && retry <= cli.retry; ++retry) {
-            auto yield_func = [&] { std::cout << progress("\rDOWNLOAD", retry, done, total) << std::flush; };
-            yield_func();
-            bad_chunks = cdn->run(
-                std::move(*bad_chunks),
-                [&](RBUN::ChunkDst const& chunk, std::span<char const> data) {
+        if (!bad_chunks.empty() && cdn) {
+            progress_bar p("DOWNLOAD", cli.no_progress, index, done, rfile.size);
+            bad_chunks =
+                cdn->download(std::move(bad_chunks), [&](RChunk::Dst const& chunk, std::span<char const> data) {
                     if (outfile) {
                         rlib_assert(outfile.write(chunk.uncompressed_offset, data));
                     }
                     done += chunk.uncompressed_size;
-                },
-                cli.no_progress ? RCDN::yield_cb() : yield_func);
+                    p.update(done);
+                });
         }
 
-        std::cout << "\n";
-
-        return bad_chunks->empty();
+        if (!bad_chunks.empty()) {
+            std::cout << "FAIL!" << std::endl;
+        } else {
+            std::cout << "OK!" << std::endl;
+        }
     }
 };
 

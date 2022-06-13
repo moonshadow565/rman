@@ -5,28 +5,107 @@
 #include <cstddef>
 #include <cstring>
 #include <functional>
+#include <optional>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <tuple>
 #include <type_traits>
 #include <vector>
 
+#define rlib_paste_impl(x, y) x##y
+#define rlib_paste(x, y) rlib_paste_impl(x, y)
+
+#define rlib_error(msg) ::rlib::throw_error(__func__, msg)
+
+#define rlib_assert(...)                                      \
+    do {                                                      \
+        if (!(__VA_ARGS__)) [[unlikely]] {                    \
+            ::rlib::throw_error(__func__, ": " #__VA_ARGS__); \
+        }                                                     \
+    } while (false)
+
+#define rlib_rethrow(...)                                 \
+    [&, func = __func__]() -> decltype(auto) {            \
+        try {                                             \
+            return __VA_ARGS__;                           \
+        } catch (std::exception const&) {                 \
+            ::rlib::throw_error(func, ": " #__VA_ARGS__); \
+        }                                                 \
+    }()
+
+#define rlib_trace(...)                                \
+    ::rlib::ErrorTrace rlib_paste(_trace_, __LINE__) { \
+        [&] { ::rlib::push_error_msg(__VA_ARGS__); }   \
+    }
+
+#define rlib_assert_zstd(...)                                                      \
+    [&, func = __func__]() -> std::size_t {                                        \
+        if (std::size_t result = __VA_ARGS__; ZSTD_isError(result)) [[unlikely]] { \
+            throw_error(func, ZSTD_getErrorName(result));                          \
+        } else {                                                                   \
+            return result;                                                         \
+        }                                                                          \
+    }()
+
 namespace rlib {
+    [[noreturn]] extern void throw_error(char const* from, char const* msg);
+
+    [[noreturn]] inline void throw_error(char const* from, std::error_code const& ec) {
+        throw_error(from, ec.message().c_str());
+    }
+
+    using error_stack_t = std::vector<std::string>;
+
+    extern error_stack_t& error_stack() noexcept;
+
+    extern void push_error_msg(char const* fmt, ...) noexcept;
+
+    struct progress_bar {
+        static constexpr auto MB = 1024.0 * 1024.0;
+
+        progress_bar(char const* banner,
+                     bool disabled,
+                     std::uint32_t index,
+                     std::uint64_t done,
+                     std::uint64_t total) noexcept;
+        ~progress_bar() noexcept;
+
+        auto update(std::uint64_t done) noexcept -> void;
+
+    private:
+        auto render() const noexcept -> void;
+
+        char const* banner_;
+        bool disabled_ = {};
+        std::uint32_t index_;
+        std::uint64_t done_;
+        std::uint64_t total_;
+        std::uint64_t percent_;
+    };
+
+    template <typename Func>
+    struct ErrorTrace : Func {
+        inline ErrorTrace(Func&& func) noexcept : Func(std::move(func)) {}
+        inline ~ErrorTrace() noexcept {
+            if (std::uncaught_exceptions()) {
+                Func::operator()();
+            }
+        }
+    };
     extern auto to_hex(std::uint64_t id, std::size_t s = 16) noexcept -> std::string;
 
     template <typename T>
         requires(std::is_enum_v<T>)
     inline auto to_hex(T id, std::size_t s = 16) noexcept -> std::string { return to_hex((std::uint64_t)id, s); }
 
-    extern auto progress(char const* banner, std::uint32_t index, std::uint64_t done, std::uint64_t total) noexcept
-        -> std::string;
-
     extern auto clean_path(std::string path) noexcept -> std::string;
 
     extern auto zstd_decompress(std::span<char const> src, std::size_t count) -> std::span<char const>;
 
-    extern auto try_zstd_decompress(std::span<char const> src, std::size_t count) -> std::span<char const>;
+    extern auto zstd_frame_decompress_size(std::span<char const> src) -> std::size_t;
 
     template <auto... M>
     inline auto sort_by(auto beg, auto end) noexcept -> void {

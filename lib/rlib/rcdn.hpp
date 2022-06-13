@@ -8,8 +8,8 @@
 #include <vector>
 
 #include "common.hpp"
-#include "rbundle.hpp"
 #include "rcache.hpp"
+#include "rchunk.hpp"
 
 namespace rlib {
     struct RCDN {
@@ -17,6 +17,8 @@ namespace rlib {
             std::string url = {};
             bool verbose = {};
             long buffer = {};
+            int interval = {};
+            std::uint32_t retry = {};
             std::uint32_t workers = {};
             std::string proxy = {};
             std::string useragent = {};
@@ -28,16 +30,13 @@ namespace rlib {
         RCDN(RCDN const&) = delete;
         ~RCDN() noexcept;
 
-        using done_cb = function_ref<void(RBUN::ChunkDst const& chunk, std::span<char const> data)>;
-        using yield_cb = function_ref<void()>;
-
-        auto run(std::vector<RBUN::ChunkDst> chunks, done_cb done, yield_cb yield, int delay = 100)
-            -> std::vector<RBUN::ChunkDst>;
+        auto download(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_good) -> std::vector<RChunk::Dst>;
 
     private:
         struct Worker;
         void* handle_;
         Options options_;
+        RCache* cache_out_;
         std::vector<std::unique_ptr<Worker>> workers_;
     };
 }

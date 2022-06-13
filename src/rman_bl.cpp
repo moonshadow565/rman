@@ -1,6 +1,6 @@
 #include <argparse.hpp>
-#include <cstdio>
-#include <rlib/error.hpp>
+#include <iostream>
+#include <rlib/common.hpp>
 #include <rlib/iofile.hpp>
 #include <rlib/rmanifest.hpp>
 
@@ -28,7 +28,7 @@ struct Main {
         auto manifest = RMAN::read(infile.copy(0, infile.size()));
 
         for (auto const& bundle : manifest.bundles) {
-            printf("/%016llX.bundle\n", (unsigned long long)bundle.bundleId);
+            std::cout << '/' << to_hex(bundle.bundleId) << ".bundle" << std::endl;
         }
     }
 };

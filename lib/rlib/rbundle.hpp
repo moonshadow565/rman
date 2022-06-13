@@ -7,42 +7,10 @@
 #include <vector>
 
 #include "iofile.hpp"
+#include "rchunk.hpp"
 
 namespace rlib {
-    enum class BundleID : std::uint64_t { None };
-
-    enum class ChunkID : std::uint64_t { None };
-
-    enum class HashType : std::uint8_t {
-        None,
-        SHA512,
-        SHA256,
-        RITO_HKDF,
-        XX64 = 0xFF,
-    };
-
     struct RBUN {
-        static constexpr std::size_t CHUNK_LIMIT = 16 * 1024 * 1024;
-
-        struct Chunk {
-            ChunkID chunkId;
-            std::uint32_t uncompressed_size;
-            std::uint32_t compressed_size;
-
-            static auto hash(std::span<char const> data, HashType type) noexcept -> ChunkID;
-            static auto hash_type(std::span<char const> data, ChunkID chunkId) -> HashType;
-        };
-
-        struct ChunkSrc : Chunk {
-            BundleID bundleId;
-            std::uint64_t compressed_offset;
-        };
-
-        struct ChunkDst : ChunkSrc {
-            HashType hash_type;
-            std::uint64_t uncompressed_offset;
-        };
-
         struct Footer {
             static constexpr std::array<char, 4> MAGIC = {'R', 'B', 'U', 'N'};
             static constexpr std::uint32_t VERSION = 0xFFFFFFFF;
@@ -55,12 +23,9 @@ namespace rlib {
 
         BundleID bundleId = {};
         std::uint64_t toc_offset = {};
-        std::vector<Chunk> chunks;
-        std::unordered_map<ChunkID, ChunkSrc> lookup;
+        std::vector<RChunk> chunks;
+        std::unordered_map<ChunkID, RChunk::Src> lookup;
 
         static auto read(IOFile const& file, bool no_lookup = false) -> RBUN;
-
-    private:
-        struct Raw;
     };
 }
