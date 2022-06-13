@@ -1,30 +1,47 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.20)
 
-project(fckrman LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 17)
+project(rman LANGUAGES C CXX)
+
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-find_package (CURL)
-find_package (Threads REQUIRED)
 
-add_subdirectory(zstd)
-add_executable(fckrman
-    include/argparse.hpp
-    include/fltbf.hpp
-    include/json.hpp
-    include/sha2.hpp
-    src/cli.hpp
-    src/cli.cpp
-    src/download_opts.hpp
-    src/download.hpp
-    src/download.cpp
-    src/file.hpp
-    src/file.cpp
-    src/error.hpp
-    src/error.cpp
-    src/manifest.hpp
-    src/manifest.cpp
-    src/main.cpp
+add_subdirectory(dep)
+
+add_library(rlib STATIC
+    lib/rlib/common.hpp
+    lib/rlib/common.cpp
+    lib/rlib/error.cpp
+    lib/rlib/error.hpp
+    lib/rlib/fbuffer.cpp
+    lib/rlib/fbuffer.hpp
+    lib/rlib/iofile.cpp
+    lib/rlib/iofile.hpp
+    lib/rlib/rbundle.cpp
+    lib/rlib/rbundle.hpp
+    lib/rlib/rcache.hpp
+    lib/rlib/rcache.cpp
+    lib/rlib/rcdn.hpp
+    lib/rlib/rcdn.cpp
+    lib/rlib/rmanifest.cpp
+    lib/rlib/rmanifest.hpp
 )
-target_link_libraries(fckrman PRIVATE zstd Threads::Threads)
-target_include_directories(fckrman PRIVATE include/)
-target_link_libraries(fckrman PRIVATE CURL::libcurl)
+target_include_directories(rlib PUBLIC lib/)
+target_link_libraries(rlib PUBLIC argparse libcurl zstd digestpp)
+
+add_executable(rman-dl src/rman_dl.cpp)
+target_link_libraries(rman-dl PRIVATE rlib)
+
+add_executable(rman-ls src/rman_ls.cpp)
+target_link_libraries(rman-ls PRIVATE rlib)
+
+add_executable(rman-bl src/rman_bl.cpp)
+target_link_libraries(rman-bl PRIVATE rlib)
+
+add_executable(rbun-add src/rbun_add.cpp)
+target_link_libraries(rbun-add PRIVATE rlib)
+
+add_executable(rbun-ls src/rbun_ls.cpp)
+target_link_libraries(rbun-ls PRIVATE rlib)
+
+add_executable(rbun-chk src/rbun_chk.cpp)
+target_link_libraries(rbun-chk PRIVATE rlib)
