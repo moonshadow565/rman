@@ -1,5 +1,6 @@
 #include <argparse.hpp>
 #include <cstdio>
+#include <rlib/common.hpp>
 #include <rlib/error.hpp>
 #include <rlib/iofile.hpp>
 #include <rlib/rbundle.hpp>
@@ -46,9 +47,10 @@ struct Main {
 
     auto list_bundle(fs::path const& path) noexcept -> void {
         try {
-            auto infile = IOFile(path, false);
+            auto infile = IOFile(path, true);
             auto bundle = RBUN::read(infile);
             for (std::uint64_t offset = 0; auto const& chunk : bundle.chunks) {
+                if (!in_range(offset, chunk.compressed_size, bundle.toc_offset)) break;
                 printf("%016llx,%016llX,%llu,%llu\n",
                        (unsigned long long)bundle.bundleId,
                        (unsigned long long)chunk.chunkId,

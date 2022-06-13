@@ -42,6 +42,20 @@ Optional arguments:
 ```
 
 ```sh
+Usage: rbun-usage.exe [options] input
+
+Collects size usage statistics on one or more bundle.
+
+Positional arguments:
+input           Bundle file(s) or folder to read from.
+
+Optional arguments:
+-h --help       shows help message and exits [default: false]
+-v --version    prints version information and exits [default: false]
+```
+
+
+```sh
 Usage: rman-bl.exe [options] manifest
 
 Lists bundle names used in manifest.

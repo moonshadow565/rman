@@ -125,8 +125,10 @@ auto RBUN::read(IOFile const& file, bool no_lookup) -> RBUN {
     rlib_assert(file.read(result.toc_offset, {(char*)result.chunks.data(), toc_size}));
 
     if (footer.version == Footer::VERSION) {
-        auto checksum = std::bit_cast<std::array<char, 8>>(XXH64(result.chunks.data(), toc_size, 0));
-        rlib_assert(footer.checksum == checksum);
+        if (!no_lookup) {
+            auto checksum = std::bit_cast<std::array<char, 8>>(XXH64(result.chunks.data(), toc_size, 0));
+            rlib_assert(footer.checksum == checksum);
+        }
         result.bundleId = BundleID::None;
     } else {
         result.bundleId = std::bit_cast<BundleID>(footer.checksum);
