@@ -51,10 +51,10 @@ struct RCDN::Worker {
 
     auto start(std::span<RChunk::Dst const>& chunks_queue, RChunk::Dst::data_cb on_data) -> void* {
         auto chunks = find_chunks(chunks_queue);
-        auto start = std::to_string(chunks.front().compressed_offset);
-        auto end = std::to_string(chunks.back().compressed_offset + chunks.back().compressed_size - 1);
-        auto range = start + "-" + end;
-        auto url = fmt::format("{}/bundles/{}.bundle", url_, chunks.front().bundleId);
+        auto const& front = chunks.front();
+        auto const& back = chunks.back();
+        auto range = fmt::format("{}-{}", front.compressed_offset, back.compressed_offset + back.compressed_size - 1);
+        auto url = fmt::format("{}/bundles/{}.bundle", url_, front.bundleId);
         rlib_assert(curl_easy_setopt(handle_, CURLOPT_URL, url.c_str()) == CURLE_OK);
         rlib_assert(curl_easy_setopt(handle_, CURLOPT_RANGE, range.c_str()) == CURLE_OK);
         buffer_.clear();

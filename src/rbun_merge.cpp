@@ -88,19 +88,21 @@ struct Main {
             auto bundle = RBUN::read(infile, true);
             {
                 std::uint64_t offset = 0;
-                progress_bar p("VERIFIED", cli.no_progress, index, offset, bundle.toc_offset);
+                progress_bar p("MERGED", cli.no_progress, index, offset, bundle.toc_offset);
                 for (auto const& chunk : bundle.chunks) {
-                    auto src = infile.copy(offset, chunk.compressed_size);
-                    if (!cli.no_extract) {
-                        auto dst = zstd_decompress(src, chunk.uncompressed_size);
-                        if (!cli.no_hash) {
-                            auto hash_type = RChunk::hash_type(dst, chunk.chunkId);
-                            rlib_assert(hash_type != HashType::None);
+                    if (!output.contains(chunk.chunkId)) {
+                        auto src = infile.copy(offset, chunk.compressed_size);
+                        if (!cli.no_extract) {
+                            auto dst = zstd_decompress(src, chunk.uncompressed_size);
+                            if (!cli.no_hash) {
+                                auto hash_type = RChunk::hash_type(dst, chunk.chunkId);
+                                rlib_assert(hash_type != HashType::None);
+                            }
+                        } else {
+                            rlib_assert(zstd_frame_decompress_size(src) == chunk.uncompressed_size);
                         }
-                    } else {
-                        rlib_assert(zstd_frame_decompress_size(src) == chunk.uncompressed_size);
+                        output.add(chunk, src);
                     }
-                    output.add(chunk, src);
                     offset += chunk.compressed_size;
                     p.update(offset);
                 }
