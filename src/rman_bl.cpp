@@ -1,3 +1,6 @@
+#include <fmt/args.h>
+#include <fmt/format.h>
+
 #include <argparse.hpp>
 #include <iostream>
 #include <rlib/common.hpp>
@@ -9,17 +12,19 @@ using namespace rlib;
 struct Main {
     struct CLI {
         std::string manifest = {};
-        RMAN::Filter filter = {};
+        std::string format = {};
     } cli = {};
 
     auto parse_args(int argc, char** argv) -> void {
         argparse::ArgumentParser program(fs::path(argv[0]).filename().generic_string());
         program.add_description("Lists bundle names used in manifest.");
         program.add_argument("manifest").help("Manifest file to read from.").required();
+        program.add_argument("--format").help("Format output.").default_value(std::string("/{bundleId}.bundle"));
 
         program.parse_args(argc, argv);
 
         cli.manifest = program.get<std::string>("manifest");
+        cli.format = program.get<std::string>("format");
     }
 
     auto run() -> void {
@@ -28,7 +33,9 @@ struct Main {
         auto manifest = RMAN::read(infile.copy(0, infile.size()));
 
         for (auto const& bundle : manifest.bundles) {
-            std::cout << '/' << to_hex(bundle.bundleId) << ".bundle" << std::endl;
+            fmt::dynamic_format_arg_store<fmt::format_context> store{};
+            store.push_back(fmt::arg("bundleId", bundle.bundleId));
+            std::cout << fmt::vformat(cli.format, store) << std::endl;
         }
     }
 };

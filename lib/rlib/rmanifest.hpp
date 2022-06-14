@@ -57,3 +57,11 @@ namespace rlib {
         struct Raw;
     };
 }
+
+template <>
+struct fmt::formatter<rlib::FileID> : formatter<std::string> {
+    template <typename FormatContext>
+    auto format(rlib::FileID id, FormatContext& ctx) {
+        return formatter<std::string>::format(fmt::format("{:016X}", (std::uint64_t)id), ctx);
+    }
+};

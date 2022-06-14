@@ -9,17 +9,18 @@ using namespace rlib;
 struct Main {
     struct CLI {
         std::string manifest = {};
+        std::string format = {};
         RMAN::Filter filter = {};
     } cli = {};
 
     auto parse_args(int argc, char** argv) -> void {
         argparse::ArgumentParser program(fs::path(argv[0]).filename().generic_string());
-        program.add_description(
-            "Lists files in manifest."
-            "\n"
-            "Output is in CSV format as follows:\n"
-            "Path,Size,ID,Lang1;Lang2;Lang3...");
+        program.add_description("Lists files in manifest.");
         program.add_argument("manifest").help("Manifest file to read from.").required();
+
+        program.add_argument("--format")
+            .help("Format output.")
+            .default_value(std::string("{path},{size},{fileId},{langs}"));
 
         program.add_argument("-l", "--filter-lang")
             .help("Filter: language(none for international files).")
@@ -44,6 +45,8 @@ struct Main {
 
         program.parse_args(argc, argv);
 
+        cli.format = program.get<std::string>("--format");
+
         cli.filter.langs = program.get<std::optional<std::regex>>("--filter-lang");
         cli.filter.path = program.get<std::optional<std::regex>>("--filter-path");
 
@@ -59,10 +62,12 @@ struct Main {
             if (!rfile.matches(cli.filter)) {
                 continue;
             }
-            std::cout << rfile.path << ','                  //
-                      << std::to_string(rfile.size) << ','  //
-                      << to_hex(rfile.fileId) + ','         //
-                      << rfile.langs << std::endl;
+            fmt::dynamic_format_arg_store<fmt::format_context> store{};
+            store.push_back(fmt::arg("path", rfile.path));
+            store.push_back(fmt::arg("size", rfile.size));
+            store.push_back(fmt::arg("fileId", rfile.fileId));
+            store.push_back(fmt::arg("langs", rfile.langs));
+            std::cout << fmt::vformat(cli.format, store) << std::endl;
         }
     }
 };

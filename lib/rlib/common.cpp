@@ -60,18 +60,6 @@ auto rlib::progress_bar::update(std::uint64_t done) noexcept -> void {
     }
 }
 
-auto rlib::to_hex(std::uint64_t id, std::size_t s) noexcept -> std::string {
-    static constexpr char table[] = "0123456789ABCDEF";
-    char result[] = "0000000000000000";
-    auto num = static_cast<std::uint64_t>(id);
-    auto output = result + (s - 1);
-    while (num) {
-        *(output--) = table[num & 0xF];
-        num >>= 4;
-    }
-    return std::string(result, s);
-};
-
 auto rlib::from_hex(std::string_view name) noexcept -> std::optional<std::uint64_t> {
     auto result = std::uint64_t{};
     auto [p, ec] = std::from_chars(name.data(), name.data() + name.size(), result, 16);

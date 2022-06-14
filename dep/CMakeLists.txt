@@ -89,3 +89,10 @@ if(NOT digestpp_POPULATED)
     add_library(digestpp INTERFACE)
     target_include_directories(digestpp INTERFACE ${digestpp_SOURCE_DIR})
 endif()
+
+FetchContent_Declare(
+    fmt
+    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+    GIT_TAG        8.1.1
+)
+FetchContent_MakeAvailable(fmt)

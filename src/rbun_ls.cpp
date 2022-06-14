@@ -9,20 +9,23 @@ using namespace rlib;
 struct Main {
     struct CLI {
         std::vector<std::string> inputs = {};
+        std::string format = {};
     } cli = {};
 
     auto parse_args(int argc, char** argv) -> void {
         argparse::ArgumentParser program(fs::path(argv[0]).filename().generic_string());
-        program.add_description(
-            "Lists contents of one or more bundles."
-            "\n"
-            "Output is in CSV format as follows:\n"
-            "BundlID,ChunkID,SizeCompressed,SizeUncompressed");
+        program.add_description("Lists contents of one or more bundles.");
+
+        program.add_argument("--format")
+            .help("Format output.")
+            .default_value(std::string("{bundleId},{chunkId},{compressedSize},{uncompressedSize}"));
+
         program.add_argument("input").help("Bundle file(s) or folder(s) to read from.").remaining().required();
 
         program.parse_args(argc, argv);
 
         cli.inputs = program.get<std::vector<std::string>>("input");
+        cli.format = program.get<std::string>("--format");
     }
 
     auto run() -> void {
@@ -56,13 +59,12 @@ struct Main {
             auto infile = IOFile(path, true);
             auto bundle = RBUN::read(infile);
             for (std::uint64_t offset = 0; auto const& chunk : bundle.chunks) {
-                std::cout                                    //
-                    << to_hex(bundle.bundleId) << ','        //
-                    << to_hex(chunk.chunkId) << ','          //
-                    << chunk.compressed_size << ','          //
-                    << chunk.uncompressed_size << std::endl  //
-                    ;
-                offset += chunk.compressed_size;
+                fmt::dynamic_format_arg_store<fmt::format_context> store{};
+                store.push_back(fmt::arg("bundleId", bundle.bundleId));
+                store.push_back(fmt::arg("chunkId", chunk.chunkId));
+                store.push_back(fmt::arg("compressedSize", chunk.compressed_size));
+                store.push_back(fmt::arg("uncompressedSize", chunk.uncompressed_size));
+                std::cout << fmt::vformat(cli.format, store) << std::endl;
             }
         } catch (std::exception const& e) {
             std::cerr << e.what() << std::endl;

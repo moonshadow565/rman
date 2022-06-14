@@ -95,9 +95,9 @@ struct Main {
                 std::uint64_t offset = 0;
                 progress_bar p("EXTRACTED", cli.no_progress, index, offset, bundle.toc_offset);
                 for (auto const& chunk : bundle.chunks) {
-                    auto name = to_hex(chunk.chunkId) + ".chunk";
+                    auto name = fmt::format("{}.chunk", chunk.chunkId);
                     if (cli.with_offset) {
-                        name = to_hex(offset) + "-" + name;
+                        name = fmt::format("{:016X}-{}", offset, name);
                     }
                     if (!seen.contains(name)) {
                         auto src = infile.copy(offset, chunk.compressed_size);

@@ -43,3 +43,19 @@ namespace rlib {
         using data_cb = function_ref<void(RChunk::Dst const& chunk, std::span<char const> data)>;
     };
 }
+
+template <>
+struct fmt::formatter<rlib::BundleID> : formatter<std::string> {
+    template <typename FormatContext>
+    auto format(rlib::BundleID id, FormatContext& ctx) {
+        return formatter<std::string>::format(fmt::format("{:016X}", (std::uint64_t)id), ctx);
+    }
+};
+
+template <>
+struct fmt::formatter<rlib::ChunkID> : formatter<std::string> {
+    template <typename FormatContext>
+    auto format(rlib::ChunkID id, FormatContext& ctx) {
+        return formatter<std::string>::format(fmt::format("{:016X}", (std::uint64_t)id), ctx);
+    }
+};

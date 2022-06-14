@@ -54,7 +54,7 @@ struct RCDN::Worker {
         auto start = std::to_string(chunks.front().compressed_offset);
         auto end = std::to_string(chunks.back().compressed_offset + chunks.back().compressed_size - 1);
         auto range = start + "-" + end;
-        auto url = url_ + "/bundles/" + to_hex(chunks.front().bundleId) + ".bundle";
+        auto url = fmt::format("{}/bundles/{}.bundle", url_, chunks.front().bundleId);
         rlib_assert(curl_easy_setopt(handle_, CURLOPT_URL, url.c_str()) == CURLE_OK);
         rlib_assert(curl_easy_setopt(handle_, CURLOPT_RANGE, range.c_str()) == CURLE_OK);
         buffer_.clear();

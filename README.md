@@ -28,7 +28,8 @@ input         	Bundle file(s) or folder(s) to read from. [required]
 Optional arguments:
 -h --help     	shows help message and exits [default: false]
 -v --version  	prints version information and exits [default: false]
---force       	Force overwrite existing files. [default: false]
+--with-offset 	Put hex offset in name. [default: false]
+-f --force    	Force overwrite existing files. [default: false]
 --no-hash     	Do not verify hash. [default: false]
 --no-progress 	Do not print progress to cerr. [default: false]
 ```
@@ -37,8 +38,6 @@ Optional arguments:
 Usage: rbun-ls.exe [options] input 
 
 Lists contents of one or more bundles.
-Output is in CSV format as follows:
-BundlID,ChunkID,SizeCompressed,SizeUncompressed
 
 Positional arguments:
 input        	Bundle file(s) or folder(s) to read from. [required]
@@ -46,6 +45,7 @@ input        	Bundle file(s) or folder(s) to read from. [required]
 Optional arguments:
 -h --help    	shows help message and exits [default: false]
 -v --version 	prints version information and exits [default: false]
+--format     	Format output. [default: "{bundleId},{chunkId},{compressedSize},{uncompressedSize}"]
 ```
 
 ```sh
@@ -90,6 +90,7 @@ manifest     	Manifest file to read from. [required]
 Optional arguments:
 -h --help    	shows help message and exits [default: false]
 -v --version 	prints version information and exits [default: false]
+--format     	Format output. [default: "/{bundleId}.bundle"]
 ```
 
 ```sh
@@ -128,8 +129,6 @@ Optional arguments:
 Usage: rman-ls.exe [options] manifest 
 
 Lists files in manifest.
-Output is in CSV format as follows:
-Path,Size,ID,Lang1;Lang2;Lang3...
 
 Positional arguments:
 manifest         	Manifest file to read from. [required]
@@ -137,6 +136,7 @@ manifest         	Manifest file to read from. [required]
 Optional arguments:
 -h --help        	shows help message and exits [default: false]
 -v --version     	prints version information and exits [default: false]
+--format         	Format output. [default: "{path},{size},{fileId},{langs}"]
 -l --filter-lang 	Filter: language(none for international files). [default: <not representable>]
 -p --filter-path 	Filter: path with regex match. [default: <not representable>]
 ```

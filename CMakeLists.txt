@@ -24,7 +24,7 @@ add_library(rlib STATIC
     lib/rlib/rmanifest.hpp
 )
 target_include_directories(rlib PUBLIC lib/)
-target_link_libraries(rlib PUBLIC argparse libcurl zstd digestpp)
+target_link_libraries(rlib PUBLIC argparse libcurl zstd digestpp fmt)
 
 add_executable(rman-dl src/rman_dl.cpp)
 target_link_libraries(rman-dl PRIVATE rlib)
