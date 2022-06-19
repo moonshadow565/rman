@@ -7,6 +7,7 @@
 #include <cinttypes>
 #include <cstddef>
 #include <cstring>
+#include <filesystem>
 #include <functional>
 #include <optional>
 #include <span>
@@ -54,6 +55,8 @@
     }()
 
 namespace rlib {
+    namespace fs = std::filesystem;
+
     [[noreturn]] extern void throw_error(char const* from, char const* msg);
 
     [[noreturn]] inline void throw_error(char const* from, std::error_code const& ec) {
@@ -155,4 +158,7 @@ namespace rlib {
         Ret (*invoke_)(void* ref, Args...) = nullptr;
         void* ref_ = nullptr;
     };
+
+    extern auto collect_files(std::vector<std::string> const& inputs, function_ref<bool(fs::path const& path)> filter)
+        -> std::vector<fs::path>;
 }

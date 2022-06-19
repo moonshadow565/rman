@@ -29,24 +29,8 @@ struct Main {
     }
 
     auto run() -> void {
-        auto paths = std::vector<fs::path>();
         std::cerr << "Collecting input bundles ... " << std::endl;
-        for (auto const& input : cli.inputs) {
-            rlib_assert(fs::exists(input));
-            if (fs::is_regular_file(input)) {
-                paths.push_back(input);
-            } else {
-                for (auto const& entry : fs::directory_iterator(input)) {
-                    if (!entry.is_regular_file()) {
-                        continue;
-                    }
-                    if (entry.path().extension() != ".bundle") {
-                        continue;
-                    }
-                    paths.push_back(entry.path());
-                }
-            }
-        }
+        auto paths = collect_files(cli.inputs, [](fs::path const& p) { return p.extension() == ".bundle"; });
         std::cerr << "Processing input bundles ... " << std::endl;
         for (auto const& path : paths) {
             list_bundle(path);
