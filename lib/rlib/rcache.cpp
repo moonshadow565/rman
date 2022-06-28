@@ -47,16 +47,11 @@ auto RCache::add(RChunk const& chunk, std::span<char const> data) -> bool {
 auto RCache::contains(ChunkID chunkId) const noexcept -> bool { return bundle_.lookup.contains(chunkId); }
 
 auto RCache::uncache(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) const -> std::vector<RChunk::Dst> {
-    sort_by<&RChunk::Dst::chunkId, &RChunk::Dst::uncompressed_offset>(chunks.begin(), chunks.end());
-    auto lastId = ChunkID::None;
-    auto dst = std::span<char const>{};
-    remove_if(chunks, [&](RChunk::Dst const& chunk) mutable {
+    auto found = std::vector<RChunk::Dst>{};
+    found.reserve(chunks.size());
+    remove_if(chunks, [&](RChunk::Dst& chunk) mutable {
         if (chunk.chunkId == ChunkID::None) {
             return false;
-        }
-        if (chunk.chunkId == lastId) {
-            on_data(chunk, dst);
-            return true;
         }
         auto i = bundle_.lookup.find(chunk.chunkId);
         if (i == bundle_.lookup.end()) {
@@ -64,17 +59,31 @@ auto RCache::uncache(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_da
         }
         auto const& c = i->second;
         rlib_assert(c.uncompressed_size == chunk.uncompressed_size);
-        auto src = std::span(buffer_);
-        if (c.compressed_offset > bundle_.toc_offset) {
-            src = src.subspan(c.compressed_offset - bundle_.toc_offset, c.compressed_size);
-        } else {
-            src = file_.copy(c.compressed_offset, c.compressed_size);
-        }
-        dst = zstd_decompress(src, c.uncompressed_size);
-        on_data(chunk, dst);
-        lastId = chunk.chunkId;
+        chunk.compressed_offset = c.compressed_offset;
+        chunk.compressed_size = c.compressed_size;
+        found.push_back(chunk);
         return true;
     });
+
+    sort_by<&RChunk::Dst::compressed_offset, &RChunk::Dst::uncompressed_offset>(found.begin(), found.end());
+
+    auto lastId = ChunkID::None;
+    auto dst = std::span<char const>{};
+    for (RChunk::Dst const& chunk : found) {
+        if (chunk.chunkId == lastId) {
+            on_data(chunk, dst);
+            continue;
+        }
+        auto src = std::span(buffer_);
+        if (chunk.compressed_offset > bundle_.toc_offset) {
+            src = src.subspan(chunk.compressed_offset - bundle_.toc_offset, chunk.compressed_size);
+        } else {
+            src = file_.copy(chunk.compressed_offset, chunk.compressed_size);
+        }
+        dst = zstd_decompress(src, chunk.uncompressed_size);
+        on_data(chunk, dst);
+        lastId = chunk.chunkId;
+    }
     return std::move(chunks);
 }
 
