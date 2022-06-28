@@ -9,6 +9,12 @@ namespace rlib {
     namespace fs = std::filesystem;
 
     struct IOFile final {
+        enum Flags {
+            WRITE = 1 << 0,
+            SEQUENTIAL = 1 << 1,
+            RANDOM_ACCESS = 1 << 2,
+        };
+
         constexpr IOFile() noexcept = default;
 
         constexpr IOFile(IOFile const& other) noexcept = delete;
@@ -26,7 +32,9 @@ namespace rlib {
 
         constexpr bool operator!() const noexcept { return !impl_.fd; }
 
-        IOFile(fs::path const& path, bool write);
+        IOFile(fs::path const& path, bool write) : IOFile(path, WRITE) {}
+
+        IOFile(fs::path const& path, Flags flags);
 
         ~IOFile() noexcept;
 
@@ -44,6 +52,7 @@ namespace rlib {
         struct Impl {
             std::intptr_t fd = {};
             std::size_t size = {};
+            Flags flags = {};
         } impl_ = {};
     };
 };

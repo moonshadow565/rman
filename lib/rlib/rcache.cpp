@@ -8,7 +8,16 @@
 
 using namespace rlib;
 
-RCache::RCache(Options const& options) : file_(options.path, !options.readonly), options_(options) {
+static IOFile::Flags make_flags(bool readonly) {
+    auto flags = IOFile::Flags{};
+    if (!readonly) {
+        flags = (IOFile::Flags)(flags | IOFile::WRITE);
+    }
+    // flags = (IOFile::Flags)(flags | IOFile::RANDOM_ACCESS);
+    return flags;
+}
+
+RCache::RCache(Options const& options) : file_(options.path, make_flags(options.readonly)), options_(options) {
     auto file_size = file_.size();
     if (file_size == 0 && !options.readonly) {
         flush();

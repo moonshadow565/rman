@@ -53,18 +53,22 @@ private:
     bool no_interupt;
 };
 
-IOFile::IOFile(fs::path const& path, bool write) {
+IOFile::IOFile(fs::path const& path, Flags flags) {
     rlib_trace("path: %s\n", path.generic_string().c_str());
-    if (write && path.has_parent_path()) {
+    if ((flags & WRITE) && path.has_parent_path()) {
         fs::create_directories(path.parent_path());
     }
-    auto const fd = ::CreateFile(path.string().c_str(),
-                                 write ? GENERIC_READ | GENERIC_WRITE : GENERIC_READ,
-                                 write ? 0 : FILE_SHARE_READ,
-                                 0,
-                                 write ? OPEN_ALWAYS : OPEN_EXISTING,
-                                 FILE_ATTRIBUTE_NORMAL,
-                                 0);
+    DWORD access = (flags & WRITE) ? (GENERIC_READ | GENERIC_WRITE) : GENERIC_READ;
+    DWORD share = (flags & WRITE) ? 0 : FILE_SHARE_READ;
+    DWORD disposition = (flags & WRITE) ? OPEN_ALWAYS : OPEN_EXISTING;
+    DWORD attributes = FILE_ATTRIBUTE_NORMAL;
+    if (flags & SEQUENTIAL) {
+        attributes |= FILE_FLAG_SEQUENTIAL_SCAN;
+    }
+    if (flags & RANDOM_ACCESS) {
+        attributes |= FILE_FLAG_RANDOM_ACCESS;
+    }
+    auto const fd = ::CreateFile(path.string().c_str(), access, share, 0, disposition, attributes, 0);
     if ((std::intptr_t)fd == 0 || (std::intptr_t)fd == -1) [[unlikely]] {
         auto ec = std::error_code((int)GetLastError(), std::system_category());
         throw_error("CreateFile: ", ec);
@@ -75,7 +79,7 @@ IOFile::IOFile(fs::path const& path, bool write) {
         ::CloseHandle(fd);
         throw_error("GetFileSizeEx: ", ec);
     }
-    impl_ = {.fd = (std::intptr_t)fd, .size = (std::size_t)size.QuadPart};
+    impl_ = {.fd = (std::intptr_t)fd, .size = (std::size_t)size.QuadPart, .flags = flags};
 }
 
 IOFile::~IOFile() noexcept {
