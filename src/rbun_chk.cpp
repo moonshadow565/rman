@@ -51,7 +51,7 @@ struct Main {
         try {
             rlib_trace("path: %s", path.generic_string().c_str());
             std::cout << "START:" << path.filename().generic_string() << std::endl;
-            auto infile = IOFile(path, false);
+            auto infile = IO::File(path, IO::READ);
             auto bundle = RBUN::read(infile, true);
             {
                 std::uint64_t offset = 0;

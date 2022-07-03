@@ -53,7 +53,7 @@ private:
     bool no_interupt;
 };
 
-IOFile::IOFile(fs::path const& path, Flags flags) {
+IO::File::File(fs::path const& path, Flags flags) {
     rlib_trace("path: %s\n", path.generic_string().c_str());
     if ((flags & WRITE) && path.has_parent_path()) {
         fs::create_directories(path.parent_path());
@@ -69,7 +69,7 @@ IOFile::IOFile(fs::path const& path, Flags flags) {
         attributes |= FILE_FLAG_RANDOM_ACCESS;
     }
     auto const fd = ::CreateFile(path.string().c_str(), access, share, 0, disposition, attributes, 0);
-    if ((std::intptr_t)fd == 0 || (std::intptr_t)fd == -1) [[unlikely]] {
+    if (!fd || fd == INVALID_HANDLE_VALUE) [[unlikely]] {
         auto ec = std::error_code((int)GetLastError(), std::system_category());
         throw_error("CreateFile: ", ec);
     }
@@ -82,15 +82,28 @@ IOFile::IOFile(fs::path const& path, Flags flags) {
     impl_ = {.fd = (std::intptr_t)fd, .size = (std::size_t)size.QuadPart, .flags = flags};
 }
 
-IOFile::~IOFile() noexcept {
+IO::File::~File() noexcept {
     if (auto impl = std::exchange(impl_, {}); impl.fd) {
         ::CloseHandle((HANDLE)impl.fd);
     }
 }
 
-auto IOFile::resize(std::size_t offset, std::size_t count) noexcept -> bool {
-    constexpr std::uint64_t MASK = 1ull << 63;
-    if (!impl_.fd) {
+auto IO::File::shrink_to_fit() noexcept -> bool {
+    if (!impl_.fd || !(impl_.flags & WRITE)) {
+        return false;
+    }
+    return true;
+}
+
+auto IO::File::reserve(std::size_t offset, std::size_t count) noexcept -> bool {
+    if (!impl_.fd || !(impl_.flags & WRITE)) {
+        return false;
+    }
+    return true;
+}
+
+auto IO::File::resize(std::size_t offset, std::size_t count) noexcept -> bool {
+    if (!impl_.fd || !(impl_.flags & WRITE)) {
         return false;
     }
     std::uint64_t const total = (std::uint64_t)offset + count;
@@ -108,9 +121,9 @@ auto IOFile::resize(std::size_t offset, std::size_t count) noexcept -> bool {
     return true;
 }
 
-auto IOFile::read(std::size_t offset, std::span<char> dst) const noexcept -> bool {
+auto IO::File::read(std::size_t offset, std::span<char> dst) const noexcept -> bool {
     constexpr std::size_t CHUNK = 0x1000'0000;
-    if (!impl_.fd) {
+    if (!impl_.fd || !(impl_.flags & WRITE)) {
         return false;
     }
     while (!dst.empty()) {
@@ -127,16 +140,16 @@ auto IOFile::read(std::size_t offset, std::span<char> dst) const noexcept -> boo
     return true;
 }
 
-auto IOFile::write(std::uint64_t offset, std::span<char const> src, bool no_interupt) noexcept -> bool {
+auto IO::File::write(std::uint64_t offset, std::span<char const> src) noexcept -> bool {
     constexpr std::size_t CHUNK = 0x4000'0000;
-    if (!impl_.fd) {
+    if (!impl_.fd || !(impl_.flags & WRITE)) {
         return false;
     }
     std::size_t const write_end = offset + src.size();
     if (write_end < offset || write_end < src.size()) {
         return false;
     }
-    NoInterupt no_interupt_lock(no_interupt);
+    NoInterupt no_interupt_lock(impl_.flags & NO_INTERUPT);
     while (!src.empty()) {
         DWORD wanted = (DWORD)std::min(CHUNK, src.size());
         OVERLAPPED off = {.Offset = (std::uint32_t)offset, .OffsetHigh = (std::uint32_t)(offset >> 32)};
@@ -157,7 +170,7 @@ auto IOFile::write(std::uint64_t offset, std::span<char const> src, bool no_inte
     return true;
 }
 
-auto IOFile::copy(std::size_t offset, std::size_t count) const -> std::span<char const> {
+auto IO::File::copy(std::size_t offset, std::size_t count) const -> std::span<char const> {
     thread_local auto result = std::vector<char>();
     if (result.size() < count) {
         result.clear();

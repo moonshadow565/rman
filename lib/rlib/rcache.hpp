@@ -26,9 +26,10 @@ namespace rlib {
 
         auto flush() -> bool;
 
-        auto can_write() const noexcept -> bool { return file_ && !options_.readonly; }
+        auto can_write() const noexcept -> bool { return file_.fd() && !options_.readonly; }
+
     private:
-        IOFile file_;
+        IO::File file_;
         Options options_;
         std::vector<char> buffer_;
         RBUN bundle_;

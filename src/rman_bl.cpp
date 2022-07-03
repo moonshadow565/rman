@@ -29,7 +29,7 @@ struct Main {
 
     auto run() -> void {
         rlib_trace("Manifest file: %s", cli.manifest.c_str());
-        auto infile = IOFile(cli.manifest, false);
+        auto infile = IO::File(cli.manifest, IO::READ);
         auto manifest = RMAN::read(infile.copy(0, infile.size()));
 
         for (auto const& bundle : manifest.bundles) {

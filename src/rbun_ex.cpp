@@ -73,7 +73,7 @@ struct Main {
         try {
             rlib_trace("path: %s", path.generic_string().c_str());
             std::cout << "START:" << path.filename().generic_string() << std::endl;
-            auto infile = IOFile(path, false);
+            auto infile = IO::File(path, IO::READ);
             auto bundle = RBUN::read(infile, true);
             {
                 std::uint64_t offset = 0;
@@ -90,9 +90,9 @@ struct Main {
                             auto hash_type = RChunk::hash_type(dst, chunk.chunkId);
                             rlib_assert(hash_type != HashType::None);
                         }
-                        auto outfile = IOFile(fs::path(cli.output) / name, true);
-                        outfile.resize(0, dst.size());
-                        outfile.write(0, dst, true);
+                        auto outpath = fs::path(cli.output) / name;
+                        auto outfile = IO::File(outpath, IO::WRITE | IO::NO_INTERUPT | IO::NO_OVERGROW);
+                        outfile.write(0, dst);
                         seen.insert(std::move(name));
                     }
                     offset += chunk.compressed_size;

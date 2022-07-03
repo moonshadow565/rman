@@ -10,13 +10,13 @@
 
 using namespace rlib;
 
-auto RBUN::read(IOFile const& file, bool no_lookup) -> RBUN {
+auto RBUN::read(IO const& io, bool no_lookup) -> RBUN {
     auto result = RBUN{};
     auto footer = Footer{};
-    auto file_size = file.size();
+    auto file_size = io.size();
 
     rlib_assert(file_size >= sizeof(Footer));
-    rlib_assert(file.read(file_size - sizeof(footer), {(char*)&footer, sizeof(footer)}));
+    rlib_assert(io.read(file_size - sizeof(footer), {(char*)&footer, sizeof(footer)}));
     rlib_assert(footer.magic == Footer::MAGIC);
     rlib_assert(footer.version == Footer::VERSION || footer.version == 1);
 
@@ -27,7 +27,7 @@ auto RBUN::read(IOFile const& file, bool no_lookup) -> RBUN {
     result.toc_offset = file_size - sizeof(footer) - toc_size;
     result.chunks.resize(footer.entry_count);
 
-    rlib_assert(file.read(result.toc_offset, {(char*)result.chunks.data(), toc_size}));
+    rlib_assert(io.read(result.toc_offset, {(char*)result.chunks.data(), toc_size}));
 
     if (footer.version == Footer::VERSION) {
         if (!no_lookup) {

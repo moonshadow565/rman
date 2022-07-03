@@ -91,7 +91,7 @@ struct Main {
     auto process_bundle(fs::path const& path) noexcept -> void {
         try {
             rlib_trace("path: %s", path.generic_string().c_str());
-            auto infile = IOFile(path, false);
+            auto infile = IO::File(path, IO::READ);
             auto bundle = RBUN::read(infile, true);
             for (std::uint64_t offset = 0; auto const& chunk : bundle.chunks) {
                 auto& usage = usage_per_chunk[chunk.chunkId];

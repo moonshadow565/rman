@@ -366,7 +366,7 @@ auto RMAN::File::verify(fs::path const& path, RChunk::Dst::data_cb on_data) cons
     if (!fs::exists(path)) {
         return chunks;
     }
-    auto infile = IOFile(path, false);
+    auto infile = IO::File(path, IO::READ);
     auto result = chunks;
     remove_if(result, [&, failfast = false](RChunk::Dst const& chunk) mutable -> bool {
         if (failfast) {

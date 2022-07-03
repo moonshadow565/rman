@@ -136,7 +136,7 @@ struct Main {
 
     auto run() -> void {
         rlib_trace("Manifest file: %s", cli.manifest.c_str());
-        auto infile = IOFile(cli.manifest, false);
+        auto infile = IO::File(cli.manifest, IO::READ);
         auto manifest = RMAN::read(infile.copy(0, infile.size()));
 
         if (!cli.no_write) {
@@ -178,9 +178,9 @@ struct Main {
             bad_chunks = rfile.chunks;
         }
 
-        auto outfile = IOFile();
+        auto outfile = IO::File();
         if (!cli.no_write) {
-            outfile = IOFile(path, true);
+            outfile = IO::File(path, IO::WRITE);
             rlib_assert(outfile.resize(0, rfile.size));
         }
 
@@ -188,7 +188,7 @@ struct Main {
             progress_bar p("UNCACHED", cli.no_progress, index, done, rfile.size);
             bad_chunks =
                 cache->uncache(std::move(bad_chunks), [&](RChunk::Dst const& chunk, std::span<char const> data) {
-                    if (outfile) {
+                    if (outfile.fd()) {
                         rlib_assert(outfile.write(chunk.uncompressed_offset, data));
                     }
                     done += chunk.uncompressed_size;
@@ -200,7 +200,7 @@ struct Main {
             progress_bar p("DOWNLOAD", cli.no_progress, index, done, rfile.size);
             bad_chunks =
                 cdn->download(std::move(bad_chunks), [&](RChunk::Dst const& chunk, std::span<char const> data) {
-                    if (outfile) {
+                    if (outfile.fd()) {
                         rlib_assert(outfile.write(chunk.uncompressed_offset, data));
                     }
                     done += chunk.uncompressed_size;

@@ -26,6 +26,6 @@ namespace rlib {
         std::vector<RChunk> chunks;
         std::unordered_map<ChunkID, RChunk::Src> lookup;
 
-        static auto read(IOFile const& file, bool no_lookup = false) -> RBUN;
+        static auto read(IO const& io, bool no_lookup = false) -> RBUN;
     };
 }

@@ -8,16 +8,11 @@
 
 using namespace rlib;
 
-static IOFile::Flags make_flags(bool readonly) {
-    auto flags = IOFile::Flags{};
-    if (!readonly) {
-        flags = (IOFile::Flags)(flags | IOFile::WRITE);
-    }
-    // flags = (IOFile::Flags)(flags | IOFile::RANDOM_ACCESS);
-    return flags;
+static constexpr auto rcache_file_flags(RCache::Options const& options) -> IO::Flags {
+    return (options.readonly ? IO::READ : IO::WRITE) | IO::NO_INTERUPT | IO::NO_OVERGROW;
 }
 
-RCache::RCache(Options const& options) : file_(options.path, make_flags(options.readonly)), options_(options) {
+RCache::RCache(Options const& options) : file_(options.path, rcache_file_flags(options)), options_(options) {
     auto file_size = file_.size();
     if (file_size == 0 && !options.readonly) {
         flush();
@@ -102,7 +97,7 @@ auto RCache::flush() -> bool {
     auto new_toc_offset = bundle_.toc_offset + buffer_.size();
     buffer_.insert(buffer_.end(), (char const*)bundle_.chunks.data(), (char const*)bundle_.chunks.data() + toc_size);
     buffer_.insert(buffer_.end(), (char const*)&footer, (char const*)&footer + sizeof(footer));
-    rlib_assert(file_.write(bundle_.toc_offset, buffer_, true));
+    rlib_assert(file_.write(bundle_.toc_offset, buffer_));
     buffer_.clear();
     bundle_.toc_offset = new_toc_offset;
     return true;

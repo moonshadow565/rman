@@ -40,7 +40,7 @@ struct Main {
     auto list_bundle(fs::path const& path) noexcept -> void {
         try {
             rlib_trace("path: %s", path.generic_string().c_str());
-            auto infile = IOFile(path, true);
+            auto infile = IO::File(path, IO::WRITE);
             auto bundle = RBUN::read(infile);
             for (std::uint64_t offset = 0; auto const& chunk : bundle.chunks) {
                 fmt::dynamic_format_arg_store<fmt::format_context> store{};
