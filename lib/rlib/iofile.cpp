@@ -123,7 +123,7 @@ auto IO::File::resize(std::size_t offset, std::size_t count) noexcept -> bool {
 
 auto IO::File::read(std::size_t offset, std::span<char> dst) const noexcept -> bool {
     constexpr std::size_t CHUNK = 0x1000'0000;
-    if (!impl_.fd || !(impl_.flags & WRITE)) {
+    if (!impl_.fd) {
         return false;
     }
     while (!dst.empty()) {
@@ -180,6 +180,127 @@ auto IO::File::copy(std::size_t offset, std::size_t count) const -> std::span<ch
     return {result.data(), count};
 }
 
+auto IO::MMap::Impl::remap(std::size_t count) noexcept -> bool {
+    void* data = nullptr;
+    if (count) {
+        auto const fd = this->file.fd();
+        auto const flags = this->file.flags();
+        DWORD protect = (flags & WRITE) ? PAGE_READWRITE : PAGE_READONLY;
+        auto mapping = ::CreateFileMappingA((HANDLE)fd, 0, protect, count >> 32, count, 0);
+        if (!mapping || mapping == INVALID_HANDLE_VALUE) [[unlikely]] {
+            return false;
+        }
+        DWORD access = (flags & WRITE) ? FILE_MAP_READ | FILE_MAP_WRITE : FILE_MAP_READ;
+        data = ::MapViewOfFile(mapping, access, 0, 0, count);
+        if (!data || data == INVALID_HANDLE_VALUE) [[unlikely]] {
+            return false;
+        }
+        CloseHandle(mapping);
+    }
+    if (this->data) {
+        ::UnmapViewOfFile(this->data);
+    }
+    this->data = data;
+    this->capacity = count;
+    return true;
+}
+
 #else
 #    error "TODO: implement linux version"
 #endif
+
+IO::MMap::MMap(fs::path const& path, Flags flags) {
+    auto impl = Impl{.file = IO::File(path, flags)};
+    if (auto size = impl.file.size()) {
+        rlib_assert(impl.remap(size));
+        impl.size = size;
+    }
+    impl_ = std::move(impl);
+}
+
+IO::MMap::~MMap() noexcept {
+    auto impl = std::exchange(impl_, {});
+    impl.remap(0);
+    if (impl.file.flags() & WRITE && impl.size != impl.file.size()) {
+        impl.file.resize(0, impl.size);
+    }
+}
+
+auto IO::MMap::shrink_to_fit() noexcept -> bool {
+    if (!impl_.file.fd() || !(impl_.file.flags() & WRITE)) {
+        return false;
+    }
+    if (impl_.size != impl_.capacity) {
+        if (!impl_.remap(impl_.size)) {
+            return false;
+        }
+    }
+    if (impl_.file.size() != impl_.size) {
+        if (!impl_.file.resize(0, impl_.size)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+auto IO::MMap::reserve(std::size_t offset, std::size_t count) noexcept -> bool {
+    if (!impl_.file.fd() || !(impl_.file.flags() & WRITE)) {
+        return false;
+    }
+    std::size_t total = offset + count;
+    if (total < offset || total < count) {
+        return false;
+    }
+    if (total > impl_.file.size()) {
+        if (!(impl_.file.flags() & NO_OVERGROW)) {
+            total = std::max(total, std::bit_ceil(std::max(std::size_t{0x1000}, total)));
+        }
+        if (!impl_.file.resize(0, total)) {
+            return false;
+        }
+    }
+    if (total > impl_.capacity) {
+        if (!impl_.remap(total)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+auto IO::MMap::read(std::size_t offset, std::span<char> dst) const noexcept -> bool {
+    if (in_range(offset, dst.size(), impl_.size)) {
+        return false;
+    }
+    std::memcpy(dst.data(), (char const*)impl_.data + offset, dst.size());
+    return true;
+}
+
+auto IO::MMap::write(std::size_t offset, std::span<char const> src) noexcept -> bool {
+    if (!impl_.file.fd() || !(impl_.file.flags() & WRITE)) {
+        return false;
+    }
+    std::size_t total = offset + src.size();
+    if (total < offset || total < src.size()) {
+        return false;
+    }
+    NoInterupt no_interupt_lock(impl_.file.flags() & NO_INTERUPT);
+    if (!this->reserve(offset, src.size())) {
+        return false;
+    }
+    std::memcpy((char*)impl_.data + offset, src.data(), src.size());
+    impl_.size = std::max(impl_.size, total);
+    return true;
+}
+
+auto IO::MMap::copy(std::size_t offset, std::size_t count) const -> std::span<char const> {
+    rlib_assert(in_range(offset, count, impl_.size));
+    return {(char const*)impl_.data + offset, count};
+}
+
+auto IO::MMap::resize(std::size_t offset, std::size_t count) noexcept -> bool {
+    if (!this->reserve(offset, count)) {
+        return false;
+    }
+    impl_.size = (std::uint64_t)offset + count;
+    return true;
+}

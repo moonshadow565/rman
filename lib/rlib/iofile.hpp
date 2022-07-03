@@ -11,6 +11,8 @@ namespace rlib {
     struct IO {
         struct File;
 
+        struct MMap;
+
         enum Flags : unsigned;
 
         virtual ~IO() noexcept = default;
@@ -99,6 +101,49 @@ namespace rlib {
             std::intptr_t fd = {};
             std::size_t size = {};
             Flags flags = {};
+        } impl_ = {};
+    };
+
+    struct IO::MMap final : IO {
+        constexpr MMap() noexcept = default;
+
+        inline MMap(MMap&& other) noexcept : impl_(std::exchange(other.impl_, {})) {}
+
+        inline MMap& operator=(MMap&& other) noexcept {
+            impl_ = std::exchange(other.impl_, {});
+            return *this;
+        }
+
+        MMap(fs::path const& path, Flags flags);
+
+        ~MMap() noexcept;
+
+        auto fd() const noexcept -> std::intptr_t override { return impl_.file.fd(); }
+
+        auto flags() const noexcept -> Flags override { return impl_.file.flags(); }
+
+        auto size() const noexcept -> std::size_t override { return impl_.size; }
+
+        auto shrink_to_fit() noexcept -> bool override;
+
+        auto reserve(std::size_t offset, std::size_t count) noexcept -> bool override;
+
+        auto resize(std::size_t offset, std::size_t count) noexcept -> bool override;
+
+        auto read(std::size_t offset, std::span<char> dst) const noexcept -> bool override;
+
+        auto write(std::size_t offset, std::span<char const> src) noexcept -> bool override;
+
+        auto copy(std::size_t offset, std::size_t count) const -> std::span<char const> override;
+
+    private:
+        struct Impl {
+            void* data = nullptr;
+            std::size_t size = {};
+            std::size_t capacity = {};
+            IO::File file = {};
+
+            auto remap(std::size_t) noexcept -> bool;
         } impl_ = {};
     };
 };
