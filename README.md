@@ -141,3 +141,24 @@ Optional arguments:
 -p --filter-path 	Filter: path with regex match. [default: <not representable>]
 ```
 
+```sh
+Usage: rman-make.exe [options] outmanifest outbundle rootfolder input 
+
+Lists bundle names used in manifest.
+
+Positional arguments:
+outmanifest   	Manifest to write into. [required]
+outbundle     	Bundle file to write into. [required]
+rootfolder    	Root folder to rebase from. [required]
+input         	Files or folders for manifest. [required]
+
+Optional arguments:
+-h --help     	shows help message and exits [default: false]
+-v --version  	prints version information and exits [default: false]
+-a --append   	Do not print progress. [default: false]
+--no-progress 	Do not print progress. [default: false]
+--chunk-size  	Chunk size in kilobytes. [default: 256]
+--level       	Compression level for zstd. [default: 6]
+--buffer      	Size for buffer before flush to disk in killobytes [64, 1048576] [default: 33554432]
+```
+
