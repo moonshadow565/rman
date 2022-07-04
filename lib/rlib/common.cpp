@@ -60,7 +60,7 @@ auto rlib::progress_bar::update(std::uint64_t done) noexcept -> void {
     }
 }
 
-auto rlib::from_hex(std::string_view name) noexcept -> std::optional<std::uint64_t> {
+auto rlib::from_hex(std::string name) noexcept -> std::optional<std::uint64_t> {
     auto result = std::uint64_t{};
     auto [p, ec] = std::from_chars(name.data(), name.data() + name.size(), result, 16);
     if (ec != std::errc{}) {
@@ -99,8 +99,9 @@ auto rlib::zstd_frame_decompress_size(std::span<char const> src) -> std::size_t 
     return header.frameContentSize;
 }
 
-auto rlib::collect_files(std::vector<std::string> const& inputs, function_ref<bool(fs::path const& path)> filter)
-    -> std::vector<fs::path> {
+auto rlib::collect_files(std::vector<std::string> const& inputs,
+                         function_ref<bool(fs::path const& path)> filter,
+                         bool recursive) -> std::vector<fs::path> {
     auto paths = std::vector<fs::path>{};
     if (inputs.size() == 1 && inputs.back() == "-") {
         std::string line;
@@ -108,13 +109,26 @@ auto rlib::collect_files(std::vector<std::string> const& inputs, function_ref<bo
             if (line.empty()) {
                 continue;
             }
+            rlib_trace("input = %s", line.c_str());
+            rlib_assert(fs::exists(line));
             paths.push_back(line);
         }
     } else {
         for (auto const& input : inputs) {
+            rlib_trace("input = %s", input.c_str());
             rlib_assert(fs::exists(input));
             if (fs::is_regular_file(input)) {
                 paths.push_back(input);
+            } else if (recursive) {
+                for (auto const& entry : fs::recursive_directory_iterator(input)) {
+                    if (!entry.is_regular_file()) {
+                        continue;
+                    }
+                    if (filter && !filter(entry.path())) {
+                        continue;
+                    }
+                    paths.push_back(entry.path());
+                }
             } else {
                 for (auto const& entry : fs::directory_iterator(input)) {
                     if (!entry.is_regular_file()) {

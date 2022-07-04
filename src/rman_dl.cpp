@@ -144,13 +144,13 @@ struct Main {
         }
 
         if (!cli.cache.path.empty()) {
-            if (cli.cdn.url.empty()) {
-                cli.cache.readonly = false;
+            if (cli.cdn.url.empty() || manifest.manifestId == ManifestID::None) {
+                cli.cache.readonly = true;
             }
             cache = std::make_unique<RCache>(cli.cache);
         }
 
-        if (!cli.cdn.url.empty()) {
+        if (!cli.cdn.url.empty() && manifest.manifestId != ManifestID::None) {
             cdn = std::make_unique<RCDN>(cli.cdn, cache.get());
         }
 

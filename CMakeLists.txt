@@ -24,7 +24,7 @@ add_library(rlib STATIC
     lib/rlib/rmanifest.hpp
 )
 target_include_directories(rlib PUBLIC lib/)
-target_link_libraries(rlib PUBLIC argparse libcurl zstd digestpp fmt)
+target_link_libraries(rlib PUBLIC argparse libcurl zstd digestpp fmt json)
 
 add_executable(rman-dl src/rman_dl.cpp)
 target_link_libraries(rman-dl PRIVATE rlib)
@@ -34,6 +34,9 @@ target_link_libraries(rman-ls PRIVATE rlib)
 
 add_executable(rman-bl src/rman_bl.cpp)
 target_link_libraries(rman-bl PRIVATE rlib)
+
+add_executable(rman-make src/rman_make.cpp)
+target_link_libraries(rman-make PRIVATE rlib)
 
 add_executable(rbun-chk src/rbun_chk.cpp)
 target_link_libraries(rbun-chk PRIVATE rlib)
@@ -49,3 +52,4 @@ target_link_libraries(rbun-merge PRIVATE rlib)
 
 add_executable(rbun-usage src/rbun_usage.cpp)
 target_link_libraries(rbun-usage PRIVATE rlib)
+

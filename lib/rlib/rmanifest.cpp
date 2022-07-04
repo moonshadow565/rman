@@ -4,6 +4,7 @@
 
 #include <cstring>
 #include <limits>
+#include <nlohmann/json.hpp>
 #include <regex>
 #include <stdexcept>
 #include <type_traits>
@@ -14,6 +15,7 @@
 #include "iofile.hpp"
 
 using namespace rlib;
+using json = nlohmann::json;
 
 struct RMAN::Raw {
     struct Offset {
@@ -343,6 +345,37 @@ private:
 };
 
 RMAN RMAN::read(std::span<char const> data) {
+    rlib_assert(!data.empty());
+    if (data.front() == '[') {
+        auto files = std::vector<RMAN::File>{};
+        auto j = json::parse(data);
+        rlib_assert(j.is_array());
+        for (auto const& jfile : j) {
+            // rlib_assert(j.is_object());
+            auto& file = files.emplace_back();
+            auto const& jparams = jfile.at("params");
+            // rlib_assert(jparams.is_object());
+            file.params.max_uncompressed = jparams.at("max_uncompressed");
+            file.params.hash_type = jparams.at("hash_type");
+            rlib_assert((unsigned)file.params.hash_type > 0 && (unsigned)file.params.hash_type <= 3);
+            file.permissions = jfile.at("permissions");
+            file.fileId = (FileID)from_hex(jfile.at("fileId")).value();
+            file.path = jfile.at("path");
+            file.link = jfile.at("link");
+            file.langs = jfile.at("langs");
+            file.size = jfile.at("size");
+            for (std::uint64_t uncompressed_offset = 0; auto const& jchunk : jfile.at("chunks")) {
+                // rlib_assert(jchunk.is_object());
+                auto& chunk = file.chunks.emplace_back();
+                chunk.chunkId = (ChunkID)from_hex(jchunk.at("chunkId")).value();
+                chunk.uncompressed_size = jchunk.at("uncompressed_size");
+                chunk.hash_type = file.params.hash_type;
+                chunk.uncompressed_offset = uncompressed_offset;
+                uncompressed_offset += chunk.uncompressed_size;
+            }
+        }
+        return RMAN{.files = std::move(files)};
+    }
     auto raw = Raw{};
     raw.parse(data);
     return RMAN{
@@ -350,6 +383,37 @@ RMAN RMAN::read(std::span<char const> data) {
         .files = std::move(raw.files),
         .bundles = std::move(raw.bundles),
     };
+}
+
+auto RMAN::dump() const -> std::string {
+    auto jfiles = json::array();
+    for (auto const& file : files) {
+        auto& jfile = jfiles.emplace_back();
+        jfile = json::object();
+        auto& jparams = jfile["params"];
+        jparams = json::object();
+        jparams["max_uncompressed"] = file.params.max_uncompressed;
+        jfile["permissions"] = file.permissions;
+        jfile["fileId"] = fmt::format("{}", file.fileId);
+        jfile["path"] = file.path;
+        jfile["link"] = file.link;
+        jfile["langs"] = file.langs;
+        jfile["size"] = file.size;
+        auto& jchunks = jfile["chunks"];
+        jchunks = json::array();
+        for (auto const& chunk : file.chunks) {
+            auto& jchunk = jchunks.emplace_back();
+            jchunk = json::object();
+            jchunk["chunkId"] = fmt::format("{}", chunk.chunkId);
+            jchunk["uncompressed_size"] = chunk.uncompressed_size;
+            if (jparams.contains("hash_type")) {
+                rlib_assert(jparams["hash_type"] == chunk.hash_type);
+            } else {
+                jparams["hash_type"] = chunk.hash_type;
+            }
+        }
+    }
+    return jfiles.dump(2);
 }
 
 auto RMAN::File::matches(Filter const& filter) const noexcept -> bool {
@@ -377,7 +441,7 @@ auto RMAN::File::verify(fs::path const& path, RChunk::Dst::data_cb on_data) cons
             return false;
         }
         auto data = infile.copy(chunk.uncompressed_offset, chunk.uncompressed_size);
-        auto id = RChunk::hash(data, params.hash_type);
+        auto id = RChunk::hash(data, chunk.hash_type);
         if (id == chunk.chunkId) {
             on_data(chunk, data);
             return true;

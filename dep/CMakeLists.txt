@@ -96,3 +96,16 @@ FetchContent_Declare(
     GIT_TAG        8.1.1
 )
 FetchContent_MakeAvailable(fmt)
+
+FetchContent_Declare(
+    json
+    URL https://github.com/nlohmann/json/releases/download/v3.9.1/include.zip
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ""
+)
+FetchContent_GetProperties(json)
+if(NOT json_POPULATED)
+    FetchContent_Populate(json)
+    add_library(json INTERFACE)
+    target_include_directories(json INTERFACE ${json_SOURCE_DIR}/include)
+endif()

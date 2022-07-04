@@ -36,7 +36,7 @@ namespace rlib {
             FileID fileId;
             Params params;
             std::uint8_t permissions;
-            std::uint32_t size;
+            std::uint64_t size;
             std::string path;
             std::string link;
             std::string langs;
@@ -52,6 +52,8 @@ namespace rlib {
         std::vector<RBUN> bundles;
 
         static RMAN read(std::span<char const> data);
+
+        auto dump() const -> std::string;
 
     private:
         struct Raw;

@@ -26,6 +26,7 @@ namespace rlib {
 
         static auto hash(std::span<char const> data, HashType type) noexcept -> ChunkID;
         static auto hash_type(std::span<char const> data, ChunkID chunkId) -> HashType;
+        static auto hkdf(std::array<std::uint8_t, 64> const& src) noexcept -> ChunkID;
 
         struct Src;
         struct Dst;

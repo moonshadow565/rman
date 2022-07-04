@@ -102,13 +102,20 @@ namespace rlib {
         std::uint64_t percent_;
     };
 
-    extern auto from_hex(std::string_view name) noexcept -> std::optional<std::uint64_t>;
+    extern auto from_hex(std::string name) noexcept -> std::optional<std::uint64_t>;
 
     extern auto clean_path(std::string path) noexcept -> std::string;
 
     extern auto zstd_decompress(std::span<char const> src, std::size_t count) -> std::span<char const>;
 
     extern auto zstd_frame_decompress_size(std::span<char const> src) -> std::size_t;
+
+    template <typename T, std::size_t S>
+    inline auto to_array(std::span<T const> src) noexcept -> std::array<T, S> {
+        auto result = std::array<T, S>{};
+        std::copy_n(src.data(), S, result.data());
+        return result;
+    }
 
     template <auto... M>
     inline auto sort_by(auto beg, auto end) noexcept -> void {
@@ -159,6 +166,7 @@ namespace rlib {
         void* ref_ = nullptr;
     };
 
-    extern auto collect_files(std::vector<std::string> const& inputs, function_ref<bool(fs::path const& path)> filter)
-        -> std::vector<fs::path>;
+    extern auto collect_files(std::vector<std::string> const& inputs,
+                              function_ref<bool(fs::path const& path)> filter,
+                              bool recursive = false) -> std::vector<fs::path>;
 }

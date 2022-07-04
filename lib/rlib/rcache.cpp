@@ -1,6 +1,7 @@
 #include "rcache.hpp"
 
 #include <common/xxhash.h>
+#include <zstd.h>
 
 #include <charconv>
 
@@ -24,6 +25,7 @@ RCache::RCache(Options const& options) : file_(options.path, rcache_file_flags(o
 RCache::~RCache() { this->flush(); }
 
 auto RCache::add(RChunk const& chunk, std::span<char const> data) -> bool {
+    rlib_assert(chunk.compressed_size == data.size());
     if (!can_write() || bundle_.lookup.contains(chunk.chunkId)) {
         return false;
     }
@@ -39,7 +41,32 @@ auto RCache::add(RChunk const& chunk, std::span<char const> data) -> bool {
     return true;
 }
 
+auto RCache::add_uncompressed(std::span<char const> src, int level) -> RChunk::Src {
+    auto id = RChunk::hash(src, HashType::RITO_HKDF);
+    auto chunk = this->find(id);
+    if (chunk.chunkId != ChunkID::None) {
+        rlib_assert(chunk.uncompressed_size == src.size());
+        return chunk;
+    }
+    auto dst = std::vector<char>(ZSTD_compressBound(src.size()));
+    auto res = rlib_assert_zstd(ZSTD_compress(dst.data(), dst.size(), src.data(), src.size(), level));
+    dst.resize(res);
+    chunk.chunkId = id;
+    chunk.uncompressed_size = src.size();
+    chunk.compressed_size = dst.size();
+    rlib_assert(this->add(chunk, dst));
+    return chunk;
+}
+
 auto RCache::contains(ChunkID chunkId) const noexcept -> bool { return bundle_.lookup.contains(chunkId); }
+
+auto RCache::find(ChunkID chunkId) const noexcept -> RChunk::Src {
+    auto i = bundle_.lookup.find(chunkId);
+    if (i == bundle_.lookup.end()) {
+        return {};
+    }
+    return i->second;
+}
 
 auto RCache::uncache(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) const -> std::vector<RChunk::Dst> {
     auto found = std::vector<RChunk::Dst>{};
@@ -48,11 +75,10 @@ auto RCache::uncache(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_da
         if (chunk.chunkId == ChunkID::None) {
             return false;
         }
-        auto i = bundle_.lookup.find(chunk.chunkId);
-        if (i == bundle_.lookup.end()) {
+        auto c = this->find(chunk.chunkId);
+        if (c.chunkId == ChunkID::None) {
             return false;
         }
-        auto const& c = i->second;
         rlib_assert(c.uncompressed_size == chunk.uncompressed_size);
         chunk.compressed_offset = c.compressed_offset;
         chunk.compressed_size = c.compressed_size;
