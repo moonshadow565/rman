@@ -37,7 +37,7 @@ rlib::progress_bar::progress_bar(char const* banner,
                                  std::uint32_t index,
                                  std::uint64_t done,
                                  std::uint64_t total) noexcept
-    : banner_(banner), disabled_(disabled), index_(index), done_(done), total_(total), percent_(done_ * 100 / total_) {
+    : banner_(banner), disabled_(disabled), index_(index), done_(done), total_(std::max(total, 1)), percent_(done_ * 100 / total_) {
     this->render();
 }
 
