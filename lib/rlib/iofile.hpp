@@ -4,6 +4,7 @@
 #include <optional>
 #include <span>
 #include <system_error>
+#include <utility>
 
 namespace rlib {
     namespace fs = std::filesystem;

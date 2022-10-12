@@ -9,6 +9,52 @@
 
 using namespace rlib;
 
+struct NoInterupt {
+    NoInterupt(bool no_interupt) : no_interupt(no_interupt) {
+        if (no_interupt) {
+            while (lock_)
+                ;
+            ++count_;
+        }
+    }
+    ~NoInterupt() {
+        if (no_interupt) {
+            while (lock_)
+                ;
+            --count_;
+        }
+    }
+
+private:
+    bool no_interupt;
+    static std::atomic_int lock_;
+    static std::atomic_int count_;
+};
+
+auto IO::File::shrink_to_fit() noexcept -> bool {
+    if (!impl_.fd || !(impl_.flags & WRITE)) {
+        return false;
+    }
+    return true;
+}
+
+auto IO::File::reserve(std::size_t offset, std::size_t count) noexcept -> bool {
+    if (!impl_.fd || !(impl_.flags & WRITE)) {
+        return false;
+    }
+    return true;
+}
+
+auto IO::File::copy(std::size_t offset, std::size_t count) const -> std::span<char const> {
+    thread_local auto result = std::vector<char>();
+    if (result.size() < count) {
+        result.clear();
+        result.resize(count);
+    }
+    rlib_assert(this->read(offset, {result.data(), count}));
+    return {result.data(), count};
+}
+
 #ifdef _WIN32
 #    ifndef NOMINMAX
 #        define NOMINMAX
@@ -18,13 +64,13 @@ using namespace rlib;
 #    endif
 #    include <windows.h>
 
-static std::atomic_int NoInterupt_lock_ = 0;
-static std::atomic_int NoInterupt_count_ = [] {
+std::atomic_int NoInterupt::lock_ = 0;
+std::atomic_int NoInterupt::count_ = [] {
     SetConsoleCtrlHandler(
         +[](DWORD) -> BOOL {
-            ++NoInterupt_lock_;
-            if (NoInterupt_count_) {
-                --NoInterupt_lock_;
+            ++lock_;
+            if (count_) {
+                --lock_;
                 return TRUE;
             }
             return FALSE;
@@ -32,26 +78,6 @@ static std::atomic_int NoInterupt_count_ = [] {
         TRUE);
     return 0;
 }();
-
-struct NoInterupt {
-    NoInterupt(bool no_interupt) : no_interupt(no_interupt) {
-        if (no_interupt) {
-            while (NoInterupt_lock_)
-                ;
-            ++NoInterupt_count_;
-        }
-    }
-    ~NoInterupt() {
-        if (no_interupt) {
-            while (NoInterupt_lock_)
-                ;
-            --NoInterupt_count_;
-        }
-    }
-
-private:
-    bool no_interupt;
-};
 
 IO::File::File(fs::path const& path, Flags flags) {
     rlib_trace("path: %s\n", path.generic_string().c_str());
@@ -86,20 +112,6 @@ IO::File::~File() noexcept {
     if (auto impl = std::exchange(impl_, {}); impl.fd) {
         ::CloseHandle((HANDLE)impl.fd);
     }
-}
-
-auto IO::File::shrink_to_fit() noexcept -> bool {
-    if (!impl_.fd || !(impl_.flags & WRITE)) {
-        return false;
-    }
-    return true;
-}
-
-auto IO::File::reserve(std::size_t offset, std::size_t count) noexcept -> bool {
-    if (!impl_.fd || !(impl_.flags & WRITE)) {
-        return false;
-    }
-    return true;
 }
 
 auto IO::File::resize(std::size_t offset, std::size_t count) noexcept -> bool {
@@ -170,16 +182,6 @@ auto IO::File::write(std::uint64_t offset, std::span<char const> src) noexcept -
     return true;
 }
 
-auto IO::File::copy(std::size_t offset, std::size_t count) const -> std::span<char const> {
-    thread_local auto result = std::vector<char>();
-    if (result.size() < count) {
-        result.clear();
-        result.resize(count);
-    }
-    rlib_assert(this->read(offset, {result.data(), count}));
-    return {result.data(), count};
-}
-
 auto IO::MMap::Impl::remap(std::size_t count) noexcept -> bool {
     void* data = nullptr;
     if (count) {
@@ -206,7 +208,130 @@ auto IO::MMap::Impl::remap(std::size_t count) noexcept -> bool {
 }
 
 #else
-#    error "TODO: implement linux version"
+#    include <fcntl.h>
+#    include <signal.h>
+#    include <sys/mman.h>
+#    include <sys/param.h>
+#    include <sys/stat.h>
+#    include <unistd.h>
+std::atomic_int NoInterupt::lock_ = 0;
+std::atomic_int NoInterupt::count_ = [] {
+    signal(SIGINT, [](int) {
+        ++lock_;
+        if (count_) {
+            --lock_;
+        } else {
+            exit(1);
+        }
+    });
+    return 0;
+}();
+
+IO::File::File(fs::path const& path, Flags flags) {
+    rlib_trace("path: %s\n", path.generic_string().c_str());
+    if ((flags & WRITE) && path.has_parent_path()) {
+        fs::create_directories(path.parent_path());
+    }
+    int fd = 0;
+    if (flags & WRITE) {
+        fd = ::open(path.string().c_str(), O_RDWR | O_CREAT, 0644);
+    } else {
+        fd = ::open(path.string().c_str(), O_RDONLY);
+    }
+    if (!fd || fd == -1) [[unlikely]] {
+        auto ec = std::error_code((int)errno, std::system_category());
+        throw_error("::open: ", ec);
+    }
+    struct ::stat size = {};
+    if (::fstat(fd, &size) == -1) [[unlikely]] {
+        auto ec = std::error_code((int)errno, std::system_category());
+        throw_error("::fstat: ", ec);
+    }
+    impl_ = {.fd = (std::intptr_t)fd, .size = (std::size_t)size.st_size, .flags = flags};
+}
+
+IO::File::~File() noexcept {
+    if (auto impl = std::exchange(impl_, {}); impl.fd) {
+        ::close((int)impl.fd);
+    }
+}
+
+auto IO::File::resize(std::size_t offset, std::size_t count) noexcept -> bool {
+    if (!impl_.fd || !(impl_.flags & WRITE)) {
+        return false;
+    }
+    std::uint64_t const total = (std::uint64_t)offset + count;
+    if (total < offset || total < count) {
+        return false;
+    }
+    if (impl_.size == total) {
+        return true;
+    }
+    if (::ftruncate((int)impl_.fd, (off_t)total) == -1) [[unlikely]] {
+        return false;
+    }
+    impl_.size = total;
+    return true;
+}
+
+auto IO::File::read(std::size_t offset, std::span<char> dst) const noexcept -> bool {
+    if (!impl_.fd) {
+        return false;
+    }
+    while (!dst.empty()) {
+        auto got = ::pread((int)impl_.fd, dst.data(), dst.size(), offset);
+        if (got <= 0 || (std::size_t)got > dst.size()) {
+            return false;
+        }
+        dst = dst.subspan(got);
+        offset += got;
+    }
+    return true;
+}
+
+auto IO::File::write(std::uint64_t offset, std::span<char const> src) noexcept -> bool {
+    constexpr std::size_t CHUNK = 0x4000'0000;
+    if (!impl_.fd || !(impl_.flags & WRITE)) {
+        return false;
+    }
+    std::size_t const write_end = offset + src.size();
+    if (write_end < offset || write_end < src.size()) {
+        return false;
+    }
+    NoInterupt no_interupt_lock(impl_.flags & NO_INTERUPT);
+    while (!src.empty()) {
+        auto got = ::pwrite((int)impl_.fd, src.data(), src.size(), offset);
+        if (got <= 0 || (std::size_t)got > src.size()) {
+            return false;
+        }
+        src = src.subspan(got);
+        offset += got;
+    }
+    if (write_end > impl_.size) {
+        impl_.size = write_end;
+    }
+    return true;
+}
+
+auto IO::MMap::Impl::remap(std::size_t count) noexcept -> bool {
+    void* data = nullptr;
+    if (count) {
+        auto const fd = this->file.fd();
+        auto const flags = this->file.flags();
+        auto const prot = (flags & WRITE) ? PROT_READ | PROT_WRITE : PROT_READ;
+        data = ::mmap(0, count, prot, MAP_SHARED, (int)fd, 0);
+        if (!data || (std::intptr_t)data != -1) [[unlikely]] {
+            return false;
+        }
+    }
+    if (this->data) {
+        ::munmap(this->data, this->capacity);
+    }
+    this->data = data;
+    this->capacity = count;
+    return true;
+}
+
 #endif
 
 IO::MMap::MMap(fs::path const& path, Flags flags) {
