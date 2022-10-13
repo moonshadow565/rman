@@ -8,6 +8,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_subdirectory(dep)
 
 add_library(rlib STATIC
+    lib/rlib/ar.hpp
+    lib/rlib/ar.cpp
+    lib/rlib/ar/bnk.hpp
+    lib/rlib/ar/bnk.cpp
+    lib/rlib/ar/wad.hpp
+    lib/rlib/ar/wad.cpp
+    lib/rlib/ar/wpk.hpp
+    lib/rlib/ar/wpk.cpp
     lib/rlib/common.hpp
     lib/rlib/common.cpp
     lib/rlib/iofile.cpp

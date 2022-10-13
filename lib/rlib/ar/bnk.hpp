@@ -1,0 +1,21 @@
+#pragma once
+#include <rlib/common.hpp>
+#include <rlib/iofile.hpp>
+
+namespace rlib::ar {
+    struct BNK {
+        static constexpr bool can_nest = false;
+
+        struct Entry {
+            struct Raw;
+            struct DIDX;
+            std::size_t offset;
+            std::size_t size;
+            bool compressed;
+        };
+        std::vector<Entry> entries;
+
+        static auto check_magic(std::span<char const> data) noexcept -> bool;
+        auto read(IO const& io, std::size_t offset, std::size_t size) -> char const*;
+    };
+}

@@ -42,6 +42,8 @@ namespace rlib {
             std::string langs;
             std::vector<RChunk::Dst> chunks;
 
+            auto dump() const -> std::string;
+
             auto matches(Filter const& filter) const noexcept -> bool;
 
             auto verify(fs::path const& path, RChunk::Dst::data_cb on_good) const -> std::vector<RChunk::Dst>;
@@ -52,8 +54,6 @@ namespace rlib {
         std::vector<RBUN> bundles;
 
         static RMAN read(std::span<char const> data);
-
-        auto dump() const -> std::string;
 
     private:
         struct Raw;

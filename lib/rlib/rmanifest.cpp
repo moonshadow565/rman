@@ -385,35 +385,32 @@ RMAN RMAN::read(std::span<char const> data) {
     };
 }
 
-auto RMAN::dump() const -> std::string {
-    auto jfiles = json::array();
-    for (auto const& file : files) {
-        auto& jfile = jfiles.emplace_back();
-        jfile = json::object();
-        auto& jparams = jfile["params"];
-        jparams = json::object();
-        jparams["max_uncompressed"] = file.params.max_uncompressed;
-        jfile["permissions"] = file.permissions;
-        jfile["fileId"] = fmt::format("{}", file.fileId);
-        jfile["path"] = file.path;
-        jfile["link"] = file.link;
-        jfile["langs"] = file.langs;
-        jfile["size"] = file.size;
-        auto& jchunks = jfile["chunks"];
-        jchunks = json::array();
-        for (auto const& chunk : file.chunks) {
-            auto& jchunk = jchunks.emplace_back();
-            jchunk = json::object();
-            jchunk["chunkId"] = fmt::format("{}", chunk.chunkId);
-            jchunk["uncompressed_size"] = chunk.uncompressed_size;
-            if (jparams.contains("hash_type")) {
-                rlib_assert(jparams["hash_type"] == chunk.hash_type);
-            } else {
-                jparams["hash_type"] = chunk.hash_type;
-            }
+auto RMAN::File::dump() const -> std::string {
+    auto const& file = *this;
+    auto jfile = json::object();
+    auto& jparams = jfile["params"];
+    jparams = json::object();
+    jparams["max_uncompressed"] = file.params.max_uncompressed;
+    jfile["permissions"] = file.permissions;
+    jfile["fileId"] = fmt::format("{}", file.fileId);
+    jfile["path"] = file.path;
+    jfile["link"] = file.link;
+    jfile["langs"] = file.langs;
+    jfile["size"] = file.size;
+    auto& jchunks = jfile["chunks"];
+    jchunks = json::array();
+    for (auto const& chunk : file.chunks) {
+        auto& jchunk = jchunks.emplace_back();
+        jchunk = json::object();
+        jchunk["chunkId"] = fmt::format("{}", chunk.chunkId);
+        jchunk["uncompressed_size"] = chunk.uncompressed_size;
+        if (jparams.contains("hash_type")) {
+            rlib_assert(jparams["hash_type"] == chunk.hash_type);
+        } else {
+            jparams["hash_type"] = chunk.hash_type;
         }
     }
-    return jfiles.dump(2);
+    return jfile.dump();
 }
 
 auto RMAN::File::matches(Filter const& filter) const noexcept -> bool {

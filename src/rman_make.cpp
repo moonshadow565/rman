@@ -4,6 +4,7 @@
 
 #include <argparse.hpp>
 #include <iostream>
+#include <rlib/ar.hpp>
 #include <rlib/common.hpp>
 #include <rlib/iofile.hpp>
 #include <rlib/rcache.hpp>
@@ -22,6 +23,7 @@ struct Main {
         std::size_t chunk_size = 0;
         std::uint32_t level = 0;
         std::uint32_t buffer = {};
+        ArSplit ar = {};
     } cli = {};
 
     auto parse_args(int argc, char** argv) -> void {
@@ -31,8 +33,12 @@ struct Main {
         program.add_argument("outbundle").help("Bundle file to write into.").required();
         program.add_argument("rootfolder").help("Root folder to rebase from.").required();
         program.add_argument("input").help("Files or folders for manifest.").remaining().required();
-        program.add_argument("-a", "--append").help("Do not print progress.").default_value(false).implicit_value(true);
         program.add_argument("--no-progress").help("Do not print progress.").default_value(false).implicit_value(true);
+        program.add_argument("--no-ar-bnk").help("Disable bnk spliting.").default_value(false).implicit_value(true);
+        program.add_argument("--no-ar-wad").help("Disable wad spliting.").default_value(false).implicit_value(true);
+        program.add_argument("--no-ar-wpk").help("Disable wpk spliting.").default_value(false).implicit_value(true);
+        program.add_argument("--no-ar-nest").help("Disable nested spliting.").default_value(false).implicit_value(true);
+
         program.add_argument("--chunk-size")
             .default_value(std::uint32_t{256})
             .help("Chunk size in kilobytes.")
@@ -58,10 +64,15 @@ struct Main {
         cli.outbundle = program.get<std::string>("outbundle");
         cli.rootfolder = program.get<std::string>("rootfolder");
         cli.inputs = program.get<std::vector<std::string>>("input");
-        cli.append = program.get<bool>("--append");
         cli.no_progress = program.get<bool>("--no-progress");
-        cli.chunk_size = program.get<std::uint32_t>("--chunk-size") * 1024u;
         cli.level = program.get<std::uint32_t>("--level");
+
+        cli.ar = ArSplit{
+            .chunk_size = program.get<std::uint32_t>("--chunk-size") * 1024u,
+            .no_bnk = program.get<bool>("--no-ar-bnk"),
+            .no_wad = program.get<bool>("--no-ar-wad"),
+            .no_wpk = program.get<bool>("--no-ar-wpk"),
+        };
     }
 
     auto run() -> void {
@@ -71,35 +82,24 @@ struct Main {
             [](fs::path const& p) { return true; },
             true);
 
-        std::cerr << "Create output manifest..." << std::endl;
-        auto outmanifest = RMAN{};
-        auto lookup = std::unordered_map<std::string, std::size_t>{};
-        auto outfile = IO::File(cli.outmanifest, IO::WRITE);
-        if (outfile.size() && cli.append) {
-            outmanifest = RMAN::read(outfile.copy(0, outfile.size()));
-            for (std::size_t i = 0; auto const& file : outmanifest.files) {
-                lookup[file.path] = i;
-                ++i;
-            }
-        }
-
         std::cerr << "Processing output bundle ... " << std::endl;
         auto outbundle = RCache(RCache::Options{.path = cli.outbundle, .readonly = false, .flush_size = cli.buffer});
+
+        std::cerr << "Create output manifest..." << std::endl;
+        auto outfile = IO::File(cli.outmanifest, IO::WRITE);
+        outfile.resize(0, 0);
+        outfile.write(0, {"[", 1});
+        std::string_view separator = "\n";
 
         std::cerr << "Processing input files ... " << std::endl;
         for (std::uint32_t index = paths.size(); auto const& path : paths) {
             auto file = add_file(path, outbundle, index--);
-            if (lookup.contains(file.path)) {
-                outmanifest.files[index] = std::move(file);
-            } else {
-                outmanifest.files.push_back(std::move(file));
-            }
+            auto outjson = std::string(separator) + file.dump();
+            outfile.write(outfile.size(), outjson);
+            separator = ",\n";
         }
 
-        std::cerr << "Writing output manifest ... " << std::endl;
-        auto outjson = outmanifest.dump();
-        outfile.resize(0, 0);
-        outfile.write(0, outjson);
+        outfile.write(outfile.size(), {"\n]\n", 3});
     }
 
     auto add_file(fs::path const& path, RCache& outbundle, std::uint32_t index) -> RMAN::File {
@@ -111,15 +111,15 @@ struct Main {
         rfile.langs = "none";
         rfile.path = fs::relative(fs::absolute(path), fs::absolute(cli.rootfolder)).generic_string();
         progress_bar p("PROCESSED", cli.no_progress, index, 0, infile.size());
-        for (std::uint64_t offset = 0; offset < infile.size();) {
-            auto src = infile.copy(offset, std::min(cli.chunk_size, infile.size() - offset));
-            RChunk::Dst chunk = {outbundle.add_uncompressed(src, cli.level)};
+        cli.ar(infile, [&](ArSplit::Entry entry) {
+            auto src = infile.copy(entry.offset, entry.size);
+            auto level = entry.compressed ? 0 : cli.level;
+            RChunk::Dst chunk = {outbundle.add_uncompressed(src, level)};
             chunk.hash_type = HashType::RITO_HKDF;
             rfile.chunks.push_back(chunk);
-            chunk.uncompressed_offset = offset;
-            offset += chunk.uncompressed_size;
-            p.update(offset);
-        }
+            chunk.uncompressed_offset = entry.offset;
+            p.update(entry.offset + entry.size);
+        });
         auto xxstate = XXH64_createState();
         rlib_assert(xxstate);
         XXH64_reset(xxstate, 0);
