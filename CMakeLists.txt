@@ -10,12 +10,9 @@ add_subdirectory(dep)
 add_library(rlib STATIC
     lib/rlib/ar.hpp
     lib/rlib/ar.cpp
-    lib/rlib/ar/bnk.hpp
-    lib/rlib/ar/bnk.cpp
-    lib/rlib/ar/wad.hpp
-    lib/rlib/ar/wad.cpp
-    lib/rlib/ar/wpk.hpp
-    lib/rlib/ar/wpk.cpp
+    lib/rlib/ar_wad.cpp
+    lib/rlib/ar_wpk.cpp
+    lib/rlib/ar_zip.cpp
     lib/rlib/common.hpp
     lib/rlib/common.cpp
     lib/rlib/iofile.cpp
@@ -32,7 +29,7 @@ add_library(rlib STATIC
     lib/rlib/rmanifest.hpp
 )
 target_include_directories(rlib PUBLIC lib/)
-target_link_libraries(rlib PUBLIC argparse libcurl zstd digestpp fmt json)
+target_link_libraries(rlib PUBLIC argparse libcurl zstd digestpp fmt json miniz)
 
 add_executable(rman-dl src/rman_dl.cpp)
 target_link_libraries(rman-dl PRIVATE rlib)

@@ -23,7 +23,7 @@ struct Main {
         std::size_t chunk_size = 0;
         std::uint32_t level = 0;
         std::uint32_t buffer = {};
-        ArSplit ar = {};
+        Ar ar = {};
     } cli = {};
 
     auto parse_args(int argc, char** argv) -> void {
@@ -34,10 +34,9 @@ struct Main {
         program.add_argument("rootfolder").help("Root folder to rebase from.").required();
         program.add_argument("input").help("Files or folders for manifest.").remaining().required();
         program.add_argument("--no-progress").help("Do not print progress.").default_value(false).implicit_value(true);
-        program.add_argument("--no-ar-bnk").help("Disable bnk spliting.").default_value(false).implicit_value(true);
         program.add_argument("--no-ar-wad").help("Disable wad spliting.").default_value(false).implicit_value(true);
         program.add_argument("--no-ar-wpk").help("Disable wpk spliting.").default_value(false).implicit_value(true);
-        program.add_argument("--no-ar-nest").help("Disable nested spliting.").default_value(false).implicit_value(true);
+        program.add_argument("--no-ar-zip").help("Disable zip spliting.").default_value(false).implicit_value(true);
 
         program.add_argument("--chunk-size")
             .default_value(std::uint32_t{256})
@@ -67,11 +66,11 @@ struct Main {
         cli.no_progress = program.get<bool>("--no-progress");
         cli.level = program.get<std::uint32_t>("--level");
 
-        cli.ar = ArSplit{
+        cli.ar = Ar{
             .chunk_size = program.get<std::uint32_t>("--chunk-size") * 1024u,
-            .no_bnk = program.get<bool>("--no-ar-bnk"),
             .no_wad = program.get<bool>("--no-ar-wad"),
             .no_wpk = program.get<bool>("--no-ar-wpk"),
+            .no_zip = program.get<bool>("--no-ar-zip"),
         };
     }
 
@@ -111,7 +110,7 @@ struct Main {
         rfile.langs = "none";
         rfile.path = fs::relative(fs::absolute(path), fs::absolute(cli.rootfolder)).generic_string();
         progress_bar p("PROCESSED", cli.no_progress, index, 0, infile.size());
-        cli.ar(infile, [&](ArSplit::Entry entry) {
+        cli.ar(infile, [&](Ar::Entry const& entry) {
             auto src = infile.copy(entry.offset, entry.size);
             auto level = entry.compressed ? 0 : cli.level;
             RChunk::Dst chunk = {outbundle.add_uncompressed(src, level)};

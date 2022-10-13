@@ -110,3 +110,21 @@ if(NOT json_POPULATED)
     add_library(json INTERFACE)
     target_include_directories(json INTERFACE ${json_SOURCE_DIR}/include)
 endif()
+
+FetchContent_Declare(
+    miniz
+    GIT_REPOSITORY https://github.com/richgel999/miniz.git
+    GIT_TAG        76b3a872855388c735c564905da030f26334f3b3
+)
+FetchContent_GetProperties(miniz)
+if(NOT miniz_POPULATED)
+    FetchContent_Populate(miniz)
+    add_subdirectory(${miniz_SOURCE_DIR} ${miniz_BINARY_DIR})
+    target_compile_definitions(miniz PUBLIC
+        -DMINIZ_NO_DEFLATE_APIS=1
+        -DMINIZ_NO_ZLIB_APIS=1
+        -DMINIZ_NO_TIME=1
+        -DMINIZ_NO_STDIO=1
+        -DMINIZ_DISABLE_ZIP_READER_CRC32_CHECKS=1
+    )
+endif()
