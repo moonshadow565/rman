@@ -9,12 +9,11 @@ using namespace rlib;
 
 struct Main {
     struct CLI {
-        std::string output = {};
+        RCache::Options output = {};
         std::vector<std::string> inputs = {};
         bool no_hash = {};
         bool no_extract = {};
         bool no_progress = {};
-        std::uint32_t buffer = {};
     } cli = {};
 
     auto parse_args(int argc, char** argv) -> void {
@@ -32,22 +31,30 @@ struct Main {
             .help("Do not print progress to cerr.")
             .default_value(false)
             .implicit_value(true);
-
         program.add_argument("--buffer")
-            .help("Size for buffer before flush to disk in killobytes [64, 1048576]")
-            .default_value(std::uint32_t{32 * 1024 * 1024u})
+            .help("Size for buffer before flush to disk in megabytes [1, 1048576]")
+            .default_value(std::uint32_t{32})
             .action([](std::string const& value) -> std::uint32_t {
-                return std::clamp((std::uint32_t)std::stoul(value), 64u, 1024u * 1024) * 1024u;
+                return std::clamp((std::uint32_t)std::stoul(value), 1u, 1024u * 1024);
+            });
+        program.add_argument("--limit")
+            .help("Size for bundle limit in gigabytes [0, 4096]")
+            .default_value(std::uint32_t{4096})
+            .action([](std::string const& value) -> std::uint32_t {
+                return std::clamp((std::uint32_t)std::stoul(value), 0u, 4096u);
             });
 
         program.parse_args(argc, argv);
 
-        cli.output = program.get<std::string>("output");
+        cli.output = {
+            .path = program.get<std::string>("output"),
+            .flush_size = program.get<std::uint32_t>("--buffer") * MiB,
+            .max_size = program.get<std::uint32_t>("--limit") * GiB,
+        };
         cli.inputs = program.get<std::vector<std::string>>("input");
         cli.no_hash = program.get<bool>("--no-extract");
         cli.no_extract = program.get<bool>("--no-hash");
         cli.no_progress = program.get<bool>("--no-progress");
-        cli.buffer = program.get<std::uint32_t>("--buffer");
     }
 
     auto run() {
@@ -57,7 +64,7 @@ struct Main {
             return;
         }
         std::cerr << "Processing output bundle ... " << std::endl;
-        auto output = RCache(RCache::Options{.path = cli.output, .readonly = false, .flush_size = cli.buffer});
+        auto output = RCache(cli.output);
         std::cerr << "Processing input bundles ... " << std::endl;
         for (std::uint32_t index = paths.size(); auto const& path : paths) {
             add_bundle(path, output, index--);

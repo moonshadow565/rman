@@ -15,14 +15,13 @@ using namespace rlib;
 struct Main {
     struct CLI {
         std::string outmanifest = {};
-        std::string outbundle = {};
+        RCache::Options outbundle = {};
         std::string rootfolder = {};
         std::vector<std::string> inputs = {};
         bool no_progress = {};
         bool append = {};
         std::size_t chunk_size = 0;
         std::uint32_t level = 0;
-        std::uint32_t buffer = {};
         Ar ar = {};
     } cli = {};
 
@@ -51,27 +50,40 @@ struct Main {
                 return std::clamp((std::uint32_t)std::stoul(value), 0u, 22u);
             });
         program.add_argument("--buffer")
-            .help("Size for buffer before flush to disk in killobytes [64, 1048576]")
-            .default_value(std::uint32_t{32 * 1024 * 1024u})
+            .help("Size for buffer before flush to disk in megabytes [1, 1048576]")
+            .default_value(std::uint32_t{32})
             .action([](std::string const& value) -> std::uint32_t {
-                return std::clamp((std::uint32_t)std::stoul(value), 64u, 1024u * 1024) * 1024u;
+                return std::clamp((std::uint32_t)std::stoul(value), 1u, 1024u * 1024);
+            });
+        program.add_argument("--limit")
+            .help("Size for bundle limit in gigabytes [0, 4096]")
+            .default_value(std::uint32_t{4096})
+            .action([](std::string const& value) -> std::uint32_t {
+                return std::clamp((std::uint32_t)std::stoul(value), 0u, 4096u);
             });
 
         program.parse_args(argc, argv);
 
         cli.outmanifest = program.get<std::string>("outmanifest");
-        cli.outbundle = program.get<std::string>("outbundle");
+        cli.outbundle = {
+            .path = program.get<std::string>("outbundle"),
+            .flush_size = program.get<std::uint32_t>("--buffer") * MiB,
+            .max_size = program.get<std::uint32_t>("--limit") * GiB,
+        };
         cli.rootfolder = program.get<std::string>("rootfolder");
         cli.inputs = program.get<std::vector<std::string>>("input");
         cli.no_progress = program.get<bool>("--no-progress");
         cli.level = program.get<std::uint32_t>("--level");
 
         cli.ar = Ar{
-            .chunk_size = program.get<std::uint32_t>("--chunk-size") * 1024u,
+            .chunk_size = program.get<std::uint32_t>("--chunk-size") * KiB,
             .no_wad = program.get<bool>("--no-ar-wad"),
             .no_wpk = program.get<bool>("--no-ar-wpk"),
             .no_zip = program.get<bool>("--no-ar-zip"),
         };
+
+        // ensure that we buffer at least one chunk
+        cli.outbundle.flush_size = std::max(cli.outbundle.flush_size, cli.ar.chunk_size * 2);
     }
 
     auto run() -> void {
@@ -82,7 +94,7 @@ struct Main {
             true);
 
         std::cerr << "Processing output bundle ... " << std::endl;
-        auto outbundle = RCache(RCache::Options{.path = cli.outbundle, .readonly = false, .flush_size = cli.buffer});
+        auto outbundle = RCache(cli.outbundle);
 
         std::cerr << "Create output manifest..." << std::endl;
         auto outfile = IO::File(cli.outmanifest, IO::WRITE);

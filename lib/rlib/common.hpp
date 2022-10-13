@@ -55,6 +55,11 @@
     }()
 
 namespace rlib {
+    static std::size_t KiB = 1024;
+    static std::size_t MiB = KiB * 1024;
+    static std::size_t GiB = MiB * 1024;
+    static std::size_t TiB = GiB * 1024;
+
     namespace fs = std::filesystem;
 
     [[noreturn]] extern void throw_error(char const* from, char const* msg);

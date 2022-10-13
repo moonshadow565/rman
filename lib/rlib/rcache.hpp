@@ -12,7 +12,8 @@ namespace rlib {
         struct Options {
             std::string path;
             bool readonly;
-            std::uint32_t flush_size;
+            std::size_t flush_size;
+            std::size_t max_size;
         };
 
         RCache(Options const& options);
@@ -30,11 +31,21 @@ namespace rlib {
 
         auto flush() -> bool;
 
-        auto can_write() const noexcept -> bool { return file_.fd() && !options_.readonly; }
+        auto can_write() const noexcept -> bool { return can_write_; }
+
     private:
-        IO::File file_;
-        Options options_;
-        std::vector<char> buffer_;
-        RBUN bundle_;
+        struct Writer {
+            std::size_t toc_offset;
+            std::size_t end_offset;
+            std::vector<RChunk> chunks;
+            std::vector<char> buffer;
+        };
+        bool can_write_ = {};
+        Options options_ = {};
+        Writer writer_ = {};
+        std::vector<std::unique_ptr<IO::File>> files_;
+        std::unordered_map<ChunkID, RChunk::Src> lookup_ = {};
+
+        auto check_space(std::size_t extra) -> bool;
     };
 }

@@ -63,11 +63,16 @@ struct Main {
             .default_value(false)
             .implicit_value(true);
         program.add_argument("--cache-buffer")
-            .help("Size for cache buffer in killobytes [64, 1048576]")
-            .default_value(std::uint32_t{32 * 1024 * 1024})
-            .scan<'u', std::uint32_t>()
+            .help("Size for cache buffer in megabytes [1, 1048576]")
+            .default_value(std::uint32_t{32})
             .action([](std::string const& value) -> std::uint32_t {
-                return std::clamp((std::uint32_t)std::stoul(value), 64u, 1024u * 1024) * 1024u;
+                return std::clamp((std::uint32_t)std::stoul(value), 1u, 1024u * 1024);
+            });
+        program.add_argument("--cache-limit")
+            .help("Size for cache bundle limit in gigabytes [0, 4096]")
+            .default_value(std::uint32_t{4})
+            .action([](std::string const& value) -> std::uint32_t {
+                return std::clamp((std::uint32_t)std::stoul(value), 0u, 4096u);
             });
 
         // CDN options
@@ -117,7 +122,8 @@ struct Main {
         cli.cache = {
             .path = program.get<std::string>("--cache"),
             .readonly = program.get<bool>("--cache-readonly"),
-            .flush_size = program.get<std::uint32_t>("--cache-buffer"),
+            .flush_size = program.get<std::uint32_t>("--cache-buffer") * MiB,
+            .max_size = program.get<std::uint32_t>("--cache-limit") * GiB,
         };
 
         cli.cdn = {
