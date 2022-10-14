@@ -70,7 +70,7 @@ auto Ar::process_try_wad(IO const& io, offset_cb cb, Entry const& top_entry) con
 #define read_header($V)                                                  \
     do {                                                                 \
         WAD::Header::V##$V v_header = {};                                \
-        rlib_assert(top_entry.size >= sizeof(header));                   \
+        rlib_assert(top_entry.size >= sizeof(v_header));                 \
         io.read(top_entry.offset, {(char*)&v_header, sizeof(v_header)}); \
         header.desc_size = v_header.desc_size;                           \
         header.desc_count = v_header.desc_count;                         \
@@ -89,7 +89,7 @@ auto Ar::process_try_wad(IO const& io, offset_cb cb, Entry const& top_entry) con
             break;
 #undef read_header
         default:
-            return "Unknown Ar::WAD version";
+            rlib_assert(!"Unknown Ar::WAD version");
     }
     rlib_assert(top_entry.size >= header.toc_start);
     rlib_assert(top_entry.size - header.toc_start >= header.toc_size);

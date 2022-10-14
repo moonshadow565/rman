@@ -46,7 +46,7 @@ auto Ar::process_try_wpk(IO const& io, offset_cb cb, Entry const& top_entry) con
 #define read_header($V)                                                  \
     do {                                                                 \
         WPK::Header::V##$V v_header = {};                                \
-        rlib_assert(top_entry.size >= sizeof(header));                   \
+        rlib_assert(top_entry.size >= sizeof(v_header));                 \
         io.read(top_entry.offset, {(char*)&v_header, sizeof(v_header)}); \
         header.desc_count = v_header.desc_count;                         \
         header.toc_start = v_header.toc_start;                           \
@@ -57,7 +57,7 @@ auto Ar::process_try_wpk(IO const& io, offset_cb cb, Entry const& top_entry) con
             break;
 #undef read_header
         default:
-            return "Unsuported Ar::WPK version!";
+            rlib_assert(!"Unsuported Ar::WPK version!");
     }
 
     rlib_assert(top_entry.size >= header.toc_start);
