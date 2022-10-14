@@ -33,14 +33,16 @@ auto Ar::process_iter_end(IO const& io, offset_cb cb, Entry const& top_entry, st
 }
 
 auto Ar::process(IO const& io, offset_cb cb, Entry const& top_entry) const -> void {
-    if (top_entry.nest && !no_wad && process_try_wad(io, cb, top_entry)) {
-        return;
-    }
-    if (top_entry.nest && !no_wpk && process_try_wpk(io, cb, top_entry)) {
-        return;
-    }
-    if (top_entry.nest && !no_zip && process_try_zip(io, cb, top_entry)) {
-        return;
+    if (top_entry.nest && min_nest && top_entry.size >= min_nest) {
+        if (!no_wad && process_try_wad(io, cb, top_entry)) {
+            return;
+        }
+        if (!no_wpk && process_try_wpk(io, cb, top_entry)) {
+            return;
+        }
+        if (!no_zip && process_try_zip(io, cb, top_entry)) {
+            return;
+        }
     }
     for (auto i = top_entry.offset, remain = top_entry.size; remain;) {
         auto size = std::min(chunk_size, remain);

@@ -13,6 +13,7 @@ namespace rlib {
         using offset_cb = function_ref<void(Entry)>;
 
         std::size_t chunk_size;
+        std::size_t min_nest;
         bool no_wad;
         bool no_wpk;
         bool no_zip;

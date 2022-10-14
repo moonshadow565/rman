@@ -32,10 +32,15 @@ struct Main {
         program.add_argument("outbundle").help("Bundle file to write into.").required();
         program.add_argument("rootfolder").help("Root folder to rebase from.").required();
         program.add_argument("input").help("Files or folders for manifest.").remaining().required();
+
         program.add_argument("--no-progress").help("Do not print progress.").default_value(false).implicit_value(true);
         program.add_argument("--no-ar-wad").help("Disable wad spliting.").default_value(false).implicit_value(true);
         program.add_argument("--no-ar-wpk").help("Disable wpk spliting.").default_value(false).implicit_value(true);
         program.add_argument("--no-ar-zip").help("Disable zip spliting.").default_value(false).implicit_value(true);
+        program.add_argument("--min-ar-size")
+            .default_value(std::uint32_t{1})
+            .help("Smart chunking minimum size in killobytes (0 to disable).")
+            .action([](std::string const& value) -> std::uint32_t { return (std::uint32_t)std::stoul(value); });
 
         program.add_argument("--chunk-size")
             .default_value(std::uint32_t{256})
@@ -77,6 +82,7 @@ struct Main {
 
         cli.ar = Ar{
             .chunk_size = program.get<std::uint32_t>("--chunk-size") * KiB,
+            .min_nest = program.get<std::uint32_t>("--min-ar-size") * KiB,
             .no_wad = program.get<bool>("--no-ar-wad"),
             .no_wpk = program.get<bool>("--no-ar-wpk"),
             .no_zip = program.get<bool>("--no-ar-zip"),
