@@ -83,10 +83,10 @@ auto Ar::process(IO const& io, offset_cb cb, Entry const& top_entry) const -> vo
 }
 
 auto Ar::push_error(Entry const& top_entry, char const* func, char const* expr) const -> void {
+    auto msg = fmt::format(": {} @ {:#x}:+{:#x}", expr, top_entry.offset, top_entry.size);
     if (!no_error) {
-        auto msg = fmt::format("{} @ {:#x}:+{:#x}", expr, top_entry.offset, top_entry.size);
         ::throw_error(func, msg.c_str());
     } else {
-        errors.push_back(fmt::format("{}: {} @ {:#x}:+{:#x}", func, expr, top_entry.offset, top_entry.size));
+        errors.push_back(func + msg);
     }
 }
