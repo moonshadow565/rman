@@ -47,7 +47,10 @@ struct Main {
         program.add_argument("outmanifest").help("Manifest to write into.").required();
         program.add_argument("outbundle").help("Bundle file to write into.").required();
         program.add_argument("rootfolder").help("Root folder to rebase from.").required();
-        program.add_argument("input").help("Files or folders for manifest.").remaining().required();
+        program.add_argument("input")
+            .help("Files or folders for manifest.")
+            .remaining()
+            .default_value(std::vector<std::string>{});
 
         program.add_argument("--no-progress").help("Do not print progress.").default_value(false).implicit_value(true);
         program.add_argument("--no-ar")
@@ -100,6 +103,9 @@ struct Main {
         };
         cli.rootfolder = program.get<std::string>("rootfolder");
         cli.inputs = program.get<std::vector<std::string>>("input");
+        if (cli.inputs.empty() && !cli.rootfolder.empty()) {
+            cli.inputs.push_back(cli.rootfolder);
+        }
         cli.no_progress = program.get<bool>("--no-progress");
         cli.level = program.get<std::int32_t>("--level");
 
@@ -127,18 +133,14 @@ struct Main {
         std::cerr << "Create output manifest..." << std::endl;
         auto outfile = IO::File(cli.outmanifest, IO::WRITE);
         outfile.resize(0, 0);
-        outfile.write(0, {"[", 1});
-        std::string_view separator = "\n";
+        outfile.write(0, {"JRMAN\n", 6});
 
         std::cerr << "Processing input files ... " << std::endl;
         for (std::uint32_t index = paths.size(); auto const& path : paths) {
             auto file = add_file(path, outbundle, index--);
-            auto outjson = std::string(separator) + file.dump();
+            auto outjson = file.dump();
             outfile.write(outfile.size(), outjson);
-            separator = ",\n";
         }
-
-        outfile.write(outfile.size(), {"\n]\n", 3});
     }
 
     auto add_file(fs::path const& path, RCache& outbundle, std::uint32_t index) -> RMAN::File {

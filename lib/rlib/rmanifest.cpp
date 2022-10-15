@@ -345,34 +345,19 @@ private:
 };
 
 RMAN RMAN::read(std::span<char const> data) {
-    rlib_assert(!data.empty());
-    if (data.front() == '[') {
+    rlib_assert(data.size() >= 5);
+    if (memcmp(data.data(), "JRMAN", 5) == 0) {
         auto files = std::vector<RMAN::File>{};
-        auto j = json::parse(data);
-        rlib_assert(j.is_array());
-        for (auto const& jfile : j) {
-            // rlib_assert(j.is_object());
-            auto& file = files.emplace_back();
-            auto const& jparams = jfile.at("params");
-            // rlib_assert(jparams.is_object());
-            file.params.max_uncompressed = jparams.at("max_uncompressed");
-            file.params.hash_type = jparams.at("hash_type");
-            rlib_assert((unsigned)file.params.hash_type > 0 && (unsigned)file.params.hash_type <= 3);
-            file.permissions = jfile.at("permissions");
-            file.fileId = (FileID)from_hex(jfile.at("fileId")).value();
-            file.path = jfile.at("path");
-            file.link = jfile.at("link");
-            file.langs = jfile.at("langs");
-            file.size = jfile.at("size");
-            for (std::uint64_t uncompressed_offset = 0; auto const& jchunk : jfile.at("chunks")) {
-                // rlib_assert(jchunk.is_object());
-                auto& chunk = file.chunks.emplace_back();
-                chunk.chunkId = (ChunkID)from_hex(jchunk.at("chunkId")).value();
-                chunk.uncompressed_size = jchunk.at("uncompressed_size");
-                chunk.hash_type = file.params.hash_type;
-                chunk.uncompressed_offset = uncompressed_offset;
-                uncompressed_offset += chunk.uncompressed_size;
+        auto const eof = data.data() + data.size();
+        // spliting lines in C++ is hard
+        for (auto i = std::find(data.data(), eof, '\n'); i != eof;) {
+            while (i != eof && (*i == '\r' || *i == '\n' || *i == ' ' || *i == '\t' || *i == '\v' || *i == '\f')) ++i;
+            auto const end = std::find(i, eof, '\n');
+            if (i != eof) {
+                auto line = std::string_view{i, end};
+                files.push_back(File::undump(line));
             }
+            i = end;
         }
         return RMAN{.files = std::move(files)};
     }
@@ -387,30 +372,46 @@ RMAN RMAN::read(std::span<char const> data) {
 
 auto RMAN::File::dump() const -> std::string {
     auto const& file = *this;
-    auto jfile = json::object();
-    auto& jparams = jfile["params"];
-    jparams = json::object();
-    jparams["max_uncompressed"] = file.params.max_uncompressed;
-    jfile["permissions"] = file.permissions;
-    jfile["fileId"] = fmt::format("{}", file.fileId);
-    jfile["path"] = file.path;
-    jfile["link"] = file.link;
-    jfile["langs"] = file.langs;
-    jfile["size"] = file.size;
-    auto& jchunks = jfile["chunks"];
-    jchunks = json::array();
+    auto jfile = json{
+        {"permissions", file.permissions},
+        {"fileId", fmt::format("{}", file.fileId)},
+        {"path", file.path},
+        {"link", file.link},
+        {"langs", file.langs},
+        {"size", file.size},
+        {"chunks", json::array()},
+    };
     for (auto const& chunk : file.chunks) {
-        auto& jchunk = jchunks.emplace_back();
-        jchunk = json::object();
-        jchunk["chunkId"] = fmt::format("{}", chunk.chunkId);
-        jchunk["uncompressed_size"] = chunk.uncompressed_size;
-        if (jparams.contains("hash_type")) {
-            rlib_assert(jparams["hash_type"] == chunk.hash_type);
-        } else {
-            jparams["hash_type"] = chunk.hash_type;
-        }
+        jfile["chunks"].emplace_back() = json{
+            {"chunkId", fmt::format("{}", chunk.chunkId)},
+            {"uncompressed_size", chunk.uncompressed_size},
+            {"hash_type", chunk.hash_type},
+        };
     }
-    return jfile.dump();
+    auto result = jfile.dump();
+    result.push_back('\n');
+    return result;
+}
+
+auto RMAN::File::undump(std::string_view data) -> File {
+    auto file = File{};
+    auto jfile = json::parse(data);
+    file.permissions = jfile.at("permissions");
+    file.fileId = (FileID)from_hex(jfile.at("fileId")).value();
+    file.path = jfile.at("path");
+    file.link = jfile.at("link");
+    file.langs = jfile.at("langs");
+    file.size = jfile.at("size");
+    for (std::uint64_t uncompressed_offset = 0; auto const& jchunk : jfile.at("chunks")) {
+        auto& chunk = file.chunks.emplace_back();
+        chunk.chunkId = (ChunkID)from_hex(jchunk.at("chunkId")).value();
+        chunk.uncompressed_size = jchunk.at("uncompressed_size");
+        chunk.hash_type = jchunk.at("hash_type");
+        chunk.uncompressed_offset = uncompressed_offset;
+        uncompressed_offset += chunk.uncompressed_size;
+        rlib_assert((unsigned)chunk.hash_type > 0 && (unsigned)chunk.hash_type <= 3);
+    }
+    return file;
 }
 
 auto RMAN::File::matches(Filter const& filter) const noexcept -> bool {

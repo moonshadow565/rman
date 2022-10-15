@@ -320,7 +320,7 @@ auto IO::MMap::Impl::remap(std::size_t count) noexcept -> bool {
         auto const flags = this->file.flags();
         auto const prot = (flags & WRITE) ? PROT_READ | PROT_WRITE : PROT_READ;
         data = ::mmap(0, count, prot, MAP_SHARED, (int)fd, 0);
-        if (!data || (std::intptr_t)data != -1) [[unlikely]] {
+        if (!data || (std::intptr_t)data == -1) [[unlikely]] {
             return false;
         }
     }

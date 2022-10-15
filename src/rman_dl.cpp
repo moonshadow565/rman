@@ -142,7 +142,7 @@ struct Main {
 
     auto run() -> void {
         rlib_trace("Manifest file: %s", cli.manifest.c_str());
-        auto infile = IO::File(cli.manifest, IO::READ);
+        auto infile = IO::MMap(cli.manifest, IO::READ);
         auto manifest = RMAN::read(infile.copy(0, infile.size()));
 
         if (!cli.no_write) {

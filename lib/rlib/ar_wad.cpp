@@ -22,7 +22,6 @@ struct Ar::WAD::Desc {
     std::uint8_t type : 4 = 1;
     std::uint8_t subchunks : 4 = {};
     std::uint8_t pad[3] = {};
-    std::uint64_t checksum = {};
 };
 
 auto Ar::process_try_wad(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool {
@@ -49,6 +48,8 @@ auto Ar::process_try_wad(IO const& io, offset_cb cb, Entry const& top_entry) con
             rlib_ar_assert(reader.read(toc_start, std::uint16_t{}));
             rlib_ar_assert(reader.read(desc_size, std::uint16_t{}));
             rlib_ar_assert(reader.read(desc_count, std::uint32_t{}));
+            rlib_ar_assert(toc_start == reader.offset());
+            rlib_ar_assert(desc_size == 24);
             break;
             // Version 3 changed how signatures are done and pinned entry size
         case 3:
@@ -64,15 +65,13 @@ auto Ar::process_try_wad(IO const& io, offset_cb cb, Entry const& top_entry) con
     }
 
     auto toc_size = desc_count * desc_size;
-    rlib_ar_assert(desc_size <= sizeof(WAD::Desc));
-    rlib_ar_assert(reader.seek(toc_start));
     rlib_ar_assert(reader.remains() >= toc_size);
 
     auto entries = std::vector<Entry>(desc_count);
     for (std::size_t i = 0; i != desc_count; ++i) {
         auto desc = WAD::Desc{};
         rlib_ar_assert(reader.read_raw(&desc, desc_size));
-        rlib_ar_assert(reader.skip(sizeof(WAD::Desc) - desc_size));
+        rlib_ar_assert(reader.skip(desc_size - sizeof(WAD::Desc)));
         rlib_ar_assert(desc.offset >= toc_start);
         rlib_ar_assert(reader.contains(desc.offset, desc.size_compressed));
         entries[i] = {

@@ -44,6 +44,8 @@ namespace rlib {
 
             auto dump() const -> std::string;
 
+            static auto undump(std::string_view data) -> File;
+
             auto matches(Filter const& filter) const noexcept -> bool;
 
             auto verify(fs::path const& path, RChunk::Dst::data_cb on_good) const -> std::vector<RChunk::Dst>;
