@@ -5,6 +5,7 @@
 #include <span>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 namespace rlib {
     namespace fs = std::filesystem;
@@ -13,6 +14,8 @@ namespace rlib {
         struct File;
 
         struct MMap;
+
+        struct Reader;
 
         enum Flags : unsigned;
 
@@ -146,5 +149,69 @@ namespace rlib {
 
             auto remap(std::size_t) noexcept -> bool;
         } impl_ = {};
+    };
+
+    struct IO::Reader final {
+        constexpr Reader() noexcept = default;
+
+        Reader(IO const& io, std::size_t pos = 0, std::size_t size = (std::size_t)-1);
+
+        auto start() const noexcept -> std::size_t { return start_; }
+
+        auto offset() const noexcept -> std::size_t { return pos_ - start_; }
+
+        auto size() const noexcept -> std::size_t { return end_ - start_; }
+
+        auto remains() const noexcept -> std::size_t { return end_ - pos_; }
+
+        auto contains(std::size_t pos, std::size_t count) const noexcept -> bool {
+            return pos <= size() && size() - pos >= count;
+        }
+
+        auto skip(std::size_t size) noexcept -> bool;
+
+        auto seek(std::size_t pos) noexcept -> bool;
+
+        auto read_within(Reader& reader, std::size_t size) noexcept -> bool;
+
+        auto read_raw(void*, std::size_t size) noexcept -> bool;
+
+        template <typename T>
+            requires(std::is_trivially_copyable_v<T>)
+        auto read(T& val) noexcept -> bool { return read_raw(&val, sizeof(T)); }
+
+        template <typename T, typename Into>
+            requires(std::is_convertible_v<T, Into>&& std::is_trivially_copyable_v<T>)
+        auto read(Into& into, T val = {}) noexcept -> bool {
+            if (!this->read(val)) return false;
+            into = static_cast<Into>(val);
+            return true;
+        }
+
+        template <typename T>
+            requires(std::is_trivially_copyable_v<T>)
+        auto read(std::span<T> dst) noexcept -> bool { return read_raw(dst.data(), dst.size_bytes()); }
+
+        template <typename T>
+            requires(std::is_trivially_copyable_v<T>)
+        auto read_n(std::vector<T>& dst, std::size_t n) noexcept -> bool {
+            if (auto size = n * sizeof(T); remains() >= n) {
+                try {
+                    dst.resize(n);
+                } catch (...) {
+                    return false;
+                }
+                return read_raw(dst.data(), size);
+            }
+            return false;
+        }
+
+        constexpr operator bool() const noexcept { return io_ != nullptr; }
+
+    private:
+        IO const* io_ = {};
+        std::size_t start_ = {};
+        std::size_t pos_ = {};
+        std::size_t end_ = {};
     };
 };

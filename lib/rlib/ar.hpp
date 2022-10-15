@@ -1,31 +1,55 @@
 #pragma once
+#include <bitset>
 #include <rlib/common.hpp>
 #include <rlib/iofile.hpp>
+
+#define rlib_ar_assert(...)                                      \
+    do {                                                         \
+        if (!(__VA_ARGS__)) [[unlikely]] {                       \
+            this->push_error(top_entry, __func__, #__VA_ARGS__); \
+            return false;                                        \
+        }                                                        \
+    } while (false)
 
 namespace rlib {
     struct Ar {
         struct Entry {
             std::size_t offset;
             std::size_t size;
-            bool compressed;
+            bool high_entropy;
             bool nest;
         };
         using offset_cb = function_ref<void(Entry)>;
 
+        struct Processor {
+            std::string_view name;
+            auto(Ar::*method)(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
+        };
+
         std::size_t chunk_size;
         std::size_t min_nest;
-        bool no_wad;
-        bool no_wpk;
-        bool no_zip;
+        std::bitset<32> disabled;
+        bool no_error;
+        mutable std::vector<std::string> errors;
+
+        static auto PROCESSORS() noexcept -> std::span<Processor const>;
+
+        static auto PROCESSORS_LIST() noexcept -> std::string const&;
 
         auto operator()(IO const& io, offset_cb cb) const -> void;
 
     private:
+        struct FSB;
+        struct FSB5;
         struct WAD;
         struct WPK;
         struct ZIP;
 
         auto process(IO const& io, offset_cb cb, Entry const& top_entry) const -> void;
+
+        auto process_try_fsb(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
+
+        auto process_try_fsb5(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
 
         auto process_try_wad(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
 
@@ -33,12 +57,8 @@ namespace rlib {
 
         auto process_try_zip(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
 
-        auto process_iter_next(IO const& io,
-                               offset_cb cb,
-                               Entry const& top_entry,
-                               std::size_t& cur,
-                               Entry const& entry) const -> void;
+        auto process_iter(IO const& io, offset_cb cb, Entry const& top_entry, std::vector<Entry> entries) const -> void;
 
-        auto process_iter_end(IO const& io, offset_cb cb, Entry const& top_entry, std::size_t cur) const -> void;
+        auto push_error(Entry const& top_entry, char const* func, char const* expr) const -> void;
     };
 }

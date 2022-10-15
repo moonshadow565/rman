@@ -32,10 +32,10 @@ struct Main {
             .default_value(false)
             .implicit_value(true);
         program.add_argument("--buffer")
-            .help("Size for buffer before flush to disk in megabytes [1, 1048576]")
+            .help("Size for buffer before flush to disk in megabytes [1, 4096]")
             .default_value(std::uint32_t{32})
             .action([](std::string const& value) -> std::uint32_t {
-                return std::clamp((std::uint32_t)std::stoul(value), 1u, 1024u * 1024);
+                return std::clamp((std::uint32_t)std::stoul(value), 1u, 4096u);
             });
         program.add_argument("--limit")
             .help("Size for bundle limit in gigabytes [0, 4096]")

@@ -61,6 +61,7 @@ namespace rlib {
     static std::size_t TiB = GiB * 1024;
 
     namespace fs = std::filesystem;
+    using namespace std::literals::string_view_literals;
 
     [[noreturn]] extern void throw_error(char const* from, char const* msg);
 

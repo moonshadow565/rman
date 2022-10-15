@@ -20,7 +20,7 @@ static auto rcache_file_path(fs::path base, std::size_t index) -> fs::path {
 
 RCache::RCache(Options const& options) : options_(options) {
     if (!options_.readonly) {
-        options_.flush_size = std::max(32 * MiB, options_.flush_size);
+        options_.flush_size = std::max(1 * MiB, options_.flush_size);
         options_.max_size = std::max(options_.flush_size * 2, options_.max_size) - options_.flush_size;
     }
     for (fs::path path = options_.path;;) {

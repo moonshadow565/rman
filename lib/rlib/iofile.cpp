@@ -429,3 +429,40 @@ auto IO::MMap::resize(std::size_t offset, std::size_t count) noexcept -> bool {
     impl_.size = (std::uint64_t)offset + count;
     return true;
 }
+
+IO::Reader::Reader(IO const& io, std::size_t pos, std::size_t size)
+    : io_(&io), start_(std::min(pos, io_->size())), pos_(start_), end_(pos_ + std::min(size, io_->size() - pos_)) {}
+
+auto IO::Reader::skip(std::size_t size) noexcept -> bool {
+    if (!size) return true;
+    if (remains() < size) [[unlikely]]
+        return false;
+    pos_ += size;
+    return true;
+}
+
+auto IO::Reader::seek(std::size_t pos) noexcept -> bool {
+    if (size() < pos) [[unlikely]]
+        return false;
+    pos_ = start_ + pos;
+    return true;
+}
+
+auto IO::Reader::read_within(Reader& reader, std::size_t size) noexcept -> bool {
+    if (remains() < size) [[unlikely]]
+        return false;
+    reader.io_ = io_;
+    reader.start_ = pos_;
+    reader.pos_ = pos_;
+    reader.end_ = pos_ + size;
+    pos_ += size;
+    return true;
+}
+
+auto IO::Reader::read_raw(void* dst, std::size_t size) noexcept -> bool {
+    if (!size) return true;
+    if (remains() < size || !io_->read(pos_, {(char*)dst, size})) [[unlikely]]
+        return false;
+    pos_ += size;
+    return true;
+}

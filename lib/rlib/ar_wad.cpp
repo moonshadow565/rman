@@ -9,125 +9,81 @@ struct Ar::WAD {
 };
 
 struct Ar::WAD::Header {
-    struct Base;
-    struct V1;
-    struct V2;
-    struct V3;
-
-    std::size_t desc_size;
-    std::size_t desc_count;
-    std::size_t toc_start;
-    std::size_t toc_size;
-};
-
-struct Ar::WAD::Header::Base {
     std::array<char, 2> magic;
-    std::uint8_t version[2];
-};
-
-struct Ar::WAD::Header::V1 : Base {
-    std::uint16_t toc_start;
-    std::uint16_t desc_size;
-    std::uint32_t desc_count;
-};
-
-struct Ar::WAD::Header::V2 : Base {
-    std::array<std::uint8_t, 84> signature;
-    std::array<std::uint8_t, 8> checksum;
-    std::uint16_t toc_start;
-    std::uint16_t desc_size;
-    std::uint32_t desc_count;
-};
-
-struct Ar::WAD::Header::V3 : Base {
-    std::uint8_t signature[256];
-    std::array<std::uint8_t, 8> checksum;
-    static constexpr std::uint16_t toc_start = 272;
-    static constexpr std::uint16_t desc_size = 32;
-    std::uint32_t desc_count;
+    std::uint8_t version;
+    std::uint8_t version_ext;
 };
 
 struct Ar::WAD::Desc {
-    std::uint64_t path;
-    std::uint32_t offset;
-    std::uint32_t size_compressed;
-    std::uint32_t size_uncompressed;
-    std::uint8_t type : 4;
-    std::uint8_t subchunks : 4;
-    std::uint8_t pad[3];
+    std::uint64_t path = {};
+    std::uint32_t offset = {};
+    std::uint32_t size_compressed = {};
+    std::uint32_t size_uncompressed = {};
+    std::uint8_t type : 4 = 1;
+    std::uint8_t subchunks : 4 = {};
+    std::uint8_t pad[3] = {};
+    std::uint64_t checksum = {};
 };
 
 auto Ar::process_try_wad(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool {
-    // Sanity check header
-    WAD::Header::Base header_base = {};
-    if (top_entry.offset != 0) return false;
-    if (top_entry.size < sizeof(header_base)) return false;
-    io.read(top_entry.offset, {(char*)&header_base, sizeof(header_base)});
-    if (header_base.magic != WAD::MAGIC || header_base.version[0] > 10) return false;
+    // We only process top level WADs
+    if (top_entry.offset != 0 || top_entry.size != io.size()) return false;
+    auto reader = IO::Reader(io, top_entry.offset, top_entry.size);
 
-    WAD::Header header = {};
-    switch (header_base.version[0]) {
-#define read_header($V)                                                  \
-    do {                                                                 \
-        WAD::Header::V##$V v_header = {};                                \
-        rlib_assert(top_entry.size >= sizeof(v_header));                 \
-        io.read(top_entry.offset, {(char*)&v_header, sizeof(v_header)}); \
-        header.desc_size = v_header.desc_size;                           \
-        header.desc_count = v_header.desc_count;                         \
-        header.toc_start = v_header.toc_start;                           \
-        header.toc_size = header.desc_size * header.desc_count;          \
-    } while (false)
-        case 0:
-        case 1:
-            read_header(1);
-            break;
+    // check if the files is actually WAD
+    auto header = WAD::Header{};
+    if (!reader.read(header) || header.magic != WAD::MAGIC || header.version > 10) return false;
+
+    auto desc_count = std::size_t{};
+    auto desc_size = std::size_t{};
+    auto toc_start = std::size_t{};
+    switch (header.version) {
+            // Version 2 added signatures
         case 2:
-            read_header(2);
+            rlib_ar_assert(reader.skip(84));  // signature
+            rlib_ar_assert(reader.skip(8));   // checksum
+            // Version 0 is very rare and should really be just Version 1
+        case 0:
+            // Veresion 1 is same as Version 2
+        case 1:
+            rlib_ar_assert(reader.read(toc_start, std::uint16_t{}));
+            rlib_ar_assert(reader.read(desc_size, std::uint16_t{}));
+            rlib_ar_assert(reader.read(desc_count, std::uint32_t{}));
             break;
+            // Version 3 changed how signatures are done and pinned entry size
         case 3:
-            read_header(3);
+            rlib_ar_assert(reader.skip(256));  // signature
+            rlib_ar_assert(reader.skip(8));    // checksum
+            desc_size = 32;
+            rlib_ar_assert(reader.read(desc_count, std::uint32_t{}));
+            toc_start = reader.offset();
             break;
-#undef read_header
         default:
-            rlib_assert(!"Unknown Ar::WAD version");
+            rlib_ar_assert(!"Unsuported Ar::WPK version!");
+            break;
     }
-    rlib_assert(top_entry.size >= header.toc_start);
-    rlib_assert(top_entry.size - header.toc_start >= header.toc_size);
-    header.toc_start += top_entry.offset;
 
-    auto entries = std::vector<Entry>(header.desc_count + 1);
-    entries[header.desc_count] = {
-        .offset = header.toc_start,
-        .size = header.toc_size,
-    };
+    auto toc_size = desc_count * desc_size;
+    rlib_ar_assert(desc_size <= sizeof(WAD::Desc));
+    rlib_ar_assert(reader.seek(toc_start));
+    rlib_ar_assert(reader.remains() >= toc_size);
 
-    for (std::size_t i = 0; i != header.desc_count; ++i) {
+    auto entries = std::vector<Entry>(desc_count);
+    for (std::size_t i = 0; i != desc_count; ++i) {
         auto desc = WAD::Desc{};
-        io.read(header.toc_start + i * header.desc_size, {(char*)&desc, header.desc_size});
-        auto entry = Entry{
+        rlib_ar_assert(reader.read_raw(&desc, desc_size));
+        rlib_ar_assert(reader.skip(sizeof(WAD::Desc) - desc_size));
+        rlib_ar_assert(desc.offset >= toc_start);
+        rlib_ar_assert(reader.contains(desc.offset, desc.size_compressed));
+        entries[i] = {
             .offset = top_entry.offset + desc.offset,
             .size = desc.size_compressed,
-            .compressed = desc.type > 2,  // 0 = raw, 1 = zlib, 2 = link
+            .high_entropy = desc.type != 0,
             .nest = desc.type == 0,
         };
-        rlib_assert(entry.offset >= header.toc_start + header.toc_size);
-        rlib_assert(top_entry.size >= entry.offset);
-        rlib_assert(top_entry.size - entry.offset >= entry.size);
-        entries[i] = entry;
     }
 
-    // ensure offsets are processed in order
-    std::sort(entries.begin(), entries.end(), [](auto const& lhs, auto const& rhs) {
-        if (lhs.offset < rhs.offset) return true;
-        if (lhs.offset == rhs.offset && lhs.size > rhs.size) return true;
-        return false;
-    });
-
-    auto cur = top_entry.offset;
-    for (auto const& entry : entries) {
-        this->process_iter_next(io, cb, top_entry, cur, entry);
-    }
-    this->process_iter_end(io, cb, top_entry, cur);
+    this->process_iter(io, cb, top_entry, std::move(entries));
 
     return true;
 }

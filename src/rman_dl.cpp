@@ -63,10 +63,10 @@ struct Main {
             .default_value(false)
             .implicit_value(true);
         program.add_argument("--cache-buffer")
-            .help("Size for cache buffer in megabytes [1, 1048576]")
+            .help("Size for cache buffer in megabytes [1, 4096]")
             .default_value(std::uint32_t{32})
             .action([](std::string const& value) -> std::uint32_t {
-                return std::clamp((std::uint32_t)std::stoul(value), 1u, 1024u * 1024);
+                return std::clamp((std::uint32_t)std::stoul(value), 1u, 4096u);
             });
         program.add_argument("--cache-limit")
             .help("Size for cache bundle limit in gigabytes [0, 4096]")

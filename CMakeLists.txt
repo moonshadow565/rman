@@ -10,6 +10,8 @@ add_subdirectory(dep)
 add_library(rlib STATIC
     lib/rlib/ar.hpp
     lib/rlib/ar.cpp
+    lib/rlib/ar_fsb.cpp
+    lib/rlib/ar_fsb5.cpp
     lib/rlib/ar_wad.cpp
     lib/rlib/ar_wpk.cpp
     lib/rlib/ar_zip.cpp

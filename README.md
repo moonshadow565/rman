@@ -63,7 +63,8 @@ Optional arguments:
 --no-extract  	Do not even attempt to extract chunk. [default: false]
 --no-hash     	Do not verify hash. [default: false]
 --no-progress 	Do not print progress to cerr. [default: false]
---buffer      	Size for buffer before flush to disk in killobytes [64, 1048576] [default: 33554432]
+--buffer      	Size for buffer before flush to disk in megabytes [1, 4096] [default: 32]
+--limit       	Size for bundle limit in gigabytes [0, 4096] [default: 4096]
 ```
 
 ```sh
@@ -112,7 +113,8 @@ Optional arguments:
 --no-progress    	Do not print progress. [default: false]
 --cache          	Cache file path. [default: ""]
 --cache-readonly 	Do not write to cache. [default: false]
---cache-buffer   	Size for cache buffer in killobytes [64, 1048576] [default: 33554432]
+--cache-buffer   	Size for cache buffer in megabytes [1, 4096] [default: 32]
+--cache-limit    	Size for cache bundle limit in gigabytes [0, 4096] [default: 4]
 --cdn            	Source url to download files from. [default: "http://lol.secure.dyn.riotcdn.net/channels/public"]
 --cdn-retry      	Number of retries to download from url. [default: 3]
 --cdn-workers    	Number of connections per downloaded file. [default: 32]
@@ -147,18 +149,22 @@ Usage: rman-make.exe [options] outmanifest outbundle rootfolder input
 Lists bundle names used in manifest.
 
 Positional arguments:
-outmanifest   	Manifest to write into. [required]
-outbundle     	Bundle file to write into. [required]
-rootfolder    	Root folder to rebase from. [required]
-input         	Files or folders for manifest. [required]
+outmanifest          	Manifest to write into. [required]
+outbundle            	Bundle file to write into. [required]
+rootfolder           	Root folder to rebase from. [required]
+input                	Files or folders for manifest. [required]
 
 Optional arguments:
--h --help     	shows help message and exits [default: false]
--v --version  	prints version information and exits [default: false]
--a --append   	Do not print progress. [default: false]
---no-progress 	Do not print progress. [default: false]
---chunk-size  	Chunk size in kilobytes. [default: 256]
---level       	Compression level for zstd. [default: 6]
---buffer      	Size for buffer before flush to disk in killobytes [64, 1048576] [default: 33554432]
+-h --help            	shows help message and exits [default: false]
+-v --version         	prints version information and exits [default: false]
+--no-progress        	Do not print progress. [default: false]
+--no-ar              	Regex of disable smart chunkers, can be any of: fsb, fsb5, wad, wpk, zip [default: ""]
+--no-ar-error        	Do not print progress. [default: false]
+--min-ar-size        	Smart chunking minimum size in killobytes (0 to disable). [default: 1]
+--chunk-size         	Chunk size in kilobytes. [default: 256]
+--level              	Compression level for zstd. [default: 6]
+--level-high-entropy 	Set compression level for high entropy chunks(0 for no special handling). [default: 0]
+--buffer             	Size for buffer before flush to disk in megabytes [1, 4096] [default: 32]
+--limit              	Size for bundle limit in gigabytes [0, 4096] [default: 4096]
 ```
 
