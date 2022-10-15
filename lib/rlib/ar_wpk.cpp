@@ -44,6 +44,9 @@ auto Ar::process_try_wpk(IO const& io, offset_cb cb, Entry const& top_entry) con
 
     auto entries = std::vector<Entry>(desc_count);
     for (std::size_t i = 0; i != desc_count; ++i) {
+        if (!desc_offsets[i]) {
+            continue;
+        }
         auto desc = WPK::Desc{};
         rlib_ar_assert(desc_offsets[i] >= toc_end);
         rlib_ar_assert(reader.seek(desc_offsets[i]));
