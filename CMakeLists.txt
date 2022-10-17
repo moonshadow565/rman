@@ -19,6 +19,10 @@ add_library(rlib STATIC
     lib/rlib/common.cpp
     lib/rlib/iofile.cpp
     lib/rlib/iofile.hpp
+    lib/rlib/rads_rls.cpp
+    lib/rlib/rads_rls.hpp
+    lib/rlib/rads_sln.cpp
+    lib/rlib/rads_sln.hpp
     lib/rlib/rbundle.cpp
     lib/rlib/rbundle.hpp
     lib/rlib/rcache.hpp
@@ -44,6 +48,9 @@ target_link_libraries(rman-bl PRIVATE rlib)
 
 add_executable(rman-make src/rman_make.cpp)
 target_link_libraries(rman-make PRIVATE rlib)
+
+add_executable(rman-rads src/rman_rads.cpp)
+target_link_libraries(rman-rads PRIVATE rlib)
 
 add_executable(rbun-chk src/rbun_chk.cpp)
 target_link_libraries(rbun-chk PRIVATE rlib)

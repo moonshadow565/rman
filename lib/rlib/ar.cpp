@@ -2,13 +2,13 @@
 
 using namespace rlib;
 
-auto Ar::PROCESSORS() noexcept ->  std::span<Processor const> {
+auto Ar::PROCESSORS() noexcept -> std::span<Processor const> {
     static constexpr Processor const instance[] = {
-        { "fsb", &Ar::process_try_fsb },
-        { "fsb5", &Ar::process_try_fsb5 },
-        { "wad", &Ar::process_try_wad },
-        { "wpk", &Ar::process_try_wpk },
-        { "zip", &Ar::process_try_zip },
+        {"fsb", &Ar::process_try_fsb},
+        {"fsb5", &Ar::process_try_fsb5},
+        {"wad", &Ar::process_try_wad},
+        {"wpk", &Ar::process_try_wpk},
+        {"zip", &Ar::process_try_zip},
     };
     return instance;
 }
@@ -16,7 +16,7 @@ auto Ar::PROCESSORS() noexcept ->  std::span<Processor const> {
 auto Ar::PROCESSORS_LIST() noexcept -> std::string const& {
     static auto instance = [] {
         auto result = std::string{};
-        for (bool space = false; auto const [name, func]: PROCESSORS()) {
+        for (bool space = false; auto const [name, func] : PROCESSORS()) {
             if (space) {
                 result += ", ";
             } else {

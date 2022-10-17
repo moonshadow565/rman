@@ -151,6 +151,14 @@ struct RMAN::Raw {
         }
     }
 
+    struct Params {
+        std::uint16_t unk0;
+        HashType hash_type;
+        std::uint8_t unk2;
+        std::uint32_t unk3;
+        std::uint32_t max_uncompressed;
+    };
+
     struct Header {
         static constexpr inline std::uint32_t MAGIC = 0x4e414d52u;
         std::uint32_t magic;
@@ -332,7 +340,6 @@ private:
             (void)unk10;
             files.push_back(RMAN::File{
                 .fileId = fileId,
-                .params = params,
                 .permissions = permissions,
                 .size = size,
                 .path = std::move(path),
@@ -368,6 +375,22 @@ RMAN RMAN::read(std::span<char const> data) {
         .files = std::move(raw.files),
         .bundles = std::move(raw.bundles),
     };
+}
+
+RMAN RMAN::read_file(fs::path const& path) {
+    auto infile = IO::MMap(path, IO::READ);
+    auto data = infile.copy(0, infile.size());
+    return RMAN::read(data);
+}
+
+auto RMAN::lookup() const -> std::unordered_map<std::string, File const*> {
+    auto result = std::unordered_map<std::string, File const*>(files.size());
+    for (auto const& file : files) {
+        auto key_lower = file.path;
+        std::transform(key_lower.begin(), key_lower.end(), key_lower.begin(), ::tolower);
+        rlib_assert(result.try_emplace(std::move(key_lower), &file).second);
+    }
+    return result;
 }
 
 auto RMAN::File::dump() const -> std::string {

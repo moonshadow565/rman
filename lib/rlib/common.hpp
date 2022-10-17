@@ -19,20 +19,24 @@
 #include <type_traits>
 #include <vector>
 
+#ifdef _MSC_VER
+#    define __PRETTY_FUNCTION__ __FUNCTION__
+#endif
+
 #define rlib_paste_impl(x, y) x##y
 #define rlib_paste(x, y) rlib_paste_impl(x, y)
 
-#define rlib_error(msg) ::rlib::throw_error(__func__, msg)
+#define rlib_error(msg) ::rlib::throw_error(__PRETTY_FUNCTION__, msg)
 
-#define rlib_assert(...)                                      \
-    do {                                                      \
-        if (!(__VA_ARGS__)) [[unlikely]] {                    \
-            ::rlib::throw_error(__func__, ": " #__VA_ARGS__); \
-        }                                                     \
+#define rlib_assert(...)                                                 \
+    do {                                                                 \
+        if (!(__VA_ARGS__)) [[unlikely]] {                               \
+            ::rlib::throw_error(__PRETTY_FUNCTION__, ": " #__VA_ARGS__); \
+        }                                                                \
     } while (false)
 
 #define rlib_rethrow(...)                                 \
-    [&, func = __func__]() -> decltype(auto) {            \
+    [&, func = __PRETTY_FUNCTION__]() -> decltype(auto) { \
         try {                                             \
             return __VA_ARGS__;                           \
         } catch (std::exception const&) {                 \
@@ -46,7 +50,7 @@
     }
 
 #define rlib_assert_zstd(...)                                                      \
-    [&, func = __func__]() -> std::size_t {                                        \
+    [&, func = __PRETTY_FUNCTION__]() -> std::size_t {                             \
         if (std::size_t result = __VA_ARGS__; ZSTD_isError(result)) [[unlikely]] { \
             throw_error(func, ZSTD_getErrorName(result));                          \
         } else {                                                                   \
@@ -63,9 +67,9 @@ namespace rlib {
     namespace fs = std::filesystem;
     using namespace std::literals::string_view_literals;
 
-    [[noreturn]] extern void throw_error(char const* from, char const* msg);
+    [[noreturn]] extern void throw_error(std::string_view from, char const* msg);
 
-    [[noreturn]] inline void throw_error(char const* from, std::error_code const& ec) {
+    [[noreturn]] inline void throw_error(std::string_view from, std::error_code const& ec) {
         throw_error(from, ec.message().c_str());
     }
 
@@ -140,6 +144,14 @@ namespace rlib {
 
     inline auto in_range(char const* ptr, std::size_t size, std::span<char const> target) noexcept -> bool {
         return ptr >= target.data() && (target.data() + target.size() - ptr) >= size;
+    }
+
+    template <typename T>
+    inline auto str_split(std::string_view str, T&& s) noexcept -> std::pair<std::string_view, std::string_view> {
+        if (auto n = str.find(std::forward<T>(s)); n != std::string_view::npos) {
+            return {str.substr(0, n), str.substr(n + 1)};
+        }
+        return {str, {}};
     }
 
     template <typename Signature>

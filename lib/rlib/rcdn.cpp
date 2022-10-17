@@ -168,7 +168,7 @@ RCDN::~RCDN() noexcept {
     }
 }
 
-auto RCDN::download(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) -> std::vector<RChunk::Dst> {
+auto RCDN::get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) -> std::vector<RChunk::Dst> {
     for (std::uint32_t retry = options_.retry; !chunks.empty() && retry; --retry) {
         sort_by<&RChunk::Dst::bundleId, &RChunk::Dst::compressed_offset, &RChunk::Dst::uncompressed_offset>(
             chunks.begin(),

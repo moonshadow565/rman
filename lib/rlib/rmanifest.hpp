@@ -24,17 +24,8 @@ namespace rlib {
             std::optional<std::regex> langs;
         };
 
-        struct Params {
-            std::uint16_t unk0;
-            HashType hash_type;
-            std::uint8_t unk2;
-            std::uint32_t unk3;
-            std::uint32_t max_uncompressed;
-        };
-
         struct File {
             FileID fileId;
-            Params params;
             std::uint8_t permissions;
             std::uint64_t size;
             std::string path;
@@ -56,6 +47,9 @@ namespace rlib {
         std::vector<RBUN> bundles;
 
         static RMAN read(std::span<char const> data);
+        static RMAN read_file(fs::path const& path);
+
+        auto lookup() const -> std::unordered_map<std::string, File const*>;
 
     private:
         struct Raw;

@@ -55,8 +55,7 @@ struct Main {
 
     auto run() -> void {
         rlib_trace("Manifest file: %s", cli.manifest.c_str());
-        auto infile = IO::MMap(cli.manifest, IO::READ);
-        auto manifest = RMAN::read(infile.copy(0, infile.size()));
+        auto manifest = RMAN::read_file(cli.manifest);
 
         for (auto const& rfile : manifest.files) {
             if (!rfile.matches(cli.filter)) {

@@ -29,8 +29,7 @@ struct Main {
 
     auto run() -> void {
         rlib_trace("Manifest file: %s", cli.manifest.c_str());
-        auto infile = IO::MMap(cli.manifest, IO::READ);
-        auto manifest = RMAN::read(infile.copy(0, infile.size()));
+        auto manifest = RMAN::read_file(cli.manifest);
 
         for (auto const& bundle : manifest.bundles) {
             fmt::dynamic_format_arg_store<fmt::format_context> store{};

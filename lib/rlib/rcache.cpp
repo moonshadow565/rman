@@ -45,7 +45,7 @@ RCache::RCache(Options const& options) : options_(options) {
                 .chunks = std::move(bundle.chunks),
             };
             writer_.end_offset += sizeof(RChunk) * writer_.chunks.size();
-            writer_.buffer.reserve(options_.flush_size * 2);
+            writer_.buffer.reserve(options_.flush_size);
             can_write_ = true;
             if (is_empty) {
                 this->flush();
@@ -115,7 +115,7 @@ auto RCache::find(ChunkID chunkId) const noexcept -> RChunk::Src {
     return i->second;
 }
 
-auto RCache::uncache(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) const -> std::vector<RChunk::Dst> {
+auto RCache::get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) const -> std::vector<RChunk::Dst> {
     auto found = std::vector<RChunk::Dst>{};
     found.reserve(chunks.size());
     remove_if(chunks, [&](RChunk::Dst& chunk) mutable {

@@ -3,12 +3,12 @@
 #include <rlib/common.hpp>
 #include <rlib/iofile.hpp>
 
-#define rlib_ar_assert(...)                                      \
-    do {                                                         \
-        if (!(__VA_ARGS__)) [[unlikely]] {                       \
-            this->push_error(top_entry, __func__, #__VA_ARGS__); \
-            return false;                                        \
-        }                                                        \
+#define rlib_ar_assert(...)                                                 \
+    do {                                                                    \
+        if (!(__VA_ARGS__)) [[unlikely]] {                                  \
+            this->push_error(top_entry, __PRETTY_FUNCTION__, #__VA_ARGS__); \
+            return false;                                                   \
+        }                                                                   \
     } while (false)
 
 namespace rlib {

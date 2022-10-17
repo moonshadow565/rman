@@ -10,8 +10,9 @@
 
 using namespace rlib;
 
-void rlib::throw_error(char const* from, char const* msg) {
+void rlib::throw_error(std::string_view from, char const* msg) {
     // break point goes here
+    from = from.substr(0, from.find_first_of("("));
     throw std::runtime_error(std::string(from) + msg);
 }
 

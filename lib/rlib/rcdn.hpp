@@ -30,7 +30,7 @@ namespace rlib {
         RCDN(RCDN const&) = delete;
         ~RCDN() noexcept;
 
-        auto download(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_good) -> std::vector<RChunk::Dst>;
+        auto get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_good) -> std::vector<RChunk::Dst>;
 
     private:
         struct Worker;

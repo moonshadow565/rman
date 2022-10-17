@@ -27,7 +27,7 @@ namespace rlib {
 
         auto find(ChunkID chunkId) const noexcept -> RChunk::Src;
 
-        auto uncache(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb read) const -> std::vector<RChunk::Dst>;
+        auto get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb read) const -> std::vector<RChunk::Dst>;
 
         auto flush() -> bool;
 

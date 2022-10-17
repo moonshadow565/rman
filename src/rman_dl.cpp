@@ -142,8 +142,7 @@ struct Main {
 
     auto run() -> void {
         rlib_trace("Manifest file: %s", cli.manifest.c_str());
-        auto infile = IO::MMap(cli.manifest, IO::READ);
-        auto manifest = RMAN::read(infile.copy(0, infile.size()));
+        auto manifest = RMAN::read_file(cli.manifest);
 
         if (!cli.no_write) {
             fs::create_directories(cli.output);
@@ -192,26 +191,24 @@ struct Main {
 
         if (!bad_chunks.empty() && cache) {
             progress_bar p("UNCACHED", cli.no_progress, index, done, rfile.size);
-            bad_chunks =
-                cache->uncache(std::move(bad_chunks), [&](RChunk::Dst const& chunk, std::span<char const> data) {
-                    if (outfile.fd()) {
-                        rlib_assert(outfile.write(chunk.uncompressed_offset, data));
-                    }
-                    done += chunk.uncompressed_size;
-                    p.update(done);
-                });
+            bad_chunks = cache->get(std::move(bad_chunks), [&](RChunk::Dst const& chunk, std::span<char const> data) {
+                if (outfile.fd()) {
+                    rlib_assert(outfile.write(chunk.uncompressed_offset, data));
+                }
+                done += chunk.uncompressed_size;
+                p.update(done);
+            });
         }
 
         if (!bad_chunks.empty() && cdn) {
             progress_bar p("DOWNLOAD", cli.no_progress, index, done, rfile.size);
-            bad_chunks =
-                cdn->download(std::move(bad_chunks), [&](RChunk::Dst const& chunk, std::span<char const> data) {
-                    if (outfile.fd()) {
-                        rlib_assert(outfile.write(chunk.uncompressed_offset, data));
-                    }
-                    done += chunk.uncompressed_size;
-                    p.update(done);
-                });
+            bad_chunks = cdn->get(std::move(bad_chunks), [&](RChunk::Dst const& chunk, std::span<char const> data) {
+                if (outfile.fd()) {
+                    rlib_assert(outfile.write(chunk.uncompressed_offset, data));
+                }
+                done += chunk.uncompressed_size;
+                p.update(done);
+            });
         }
 
         if (!bad_chunks.empty()) {

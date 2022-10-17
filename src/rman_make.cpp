@@ -56,17 +56,20 @@ struct Main {
         program.add_argument("--no-ar")
             .help("Regex of disable smart chunkers, can be any of: " + Ar::PROCESSORS_LIST())
             .default_value(std::string{});
-        program.add_argument("--no-ar-error").help("Do not print progress.").default_value(false).implicit_value(true);
+        program.add_argument("--no-ar-error")
+            .help("Do not stop on smart chunking error.")
+            .default_value(false)
+            .implicit_value(true);
         program.add_argument("--min-ar-size")
             .default_value(std::uint32_t{1})
             .help("Smart chunking minimum size in killobytes (0 to disable).")
             .action([](std::string const& value) -> std::uint32_t { return (std::uint32_t)std::stoul(value); });
 
         program.add_argument("--chunk-size")
-            .default_value(std::uint32_t{256})
-            .help("Chunk size in kilobytes.")
+            .default_value(std::uint32_t{0})
+            .help("Chunk size in megabytes [0, 4096].")
             .action([](std::string const& value) -> std::uint32_t {
-                return std::clamp((std::uint32_t)std::stoul(value), 4u, 16u * 1024u);
+                return std::clamp((std::uint32_t)std::stoul(value), 0u, 4096u);
             });
         program.add_argument("--level")
             .default_value(std::int32_t{6})
@@ -75,7 +78,7 @@ struct Main {
                 return std::clamp((std::int32_t)std::stol(value), -7, 22);
             });
         program.add_argument("--level-high-entropy")
-            .default_value(std::uint32_t{0})
+            .default_value(std::int32_t{0})
             .help("Set compression level for high entropy chunks(0 for no special handling).")
             .action([](std::string const& value) -> std::int32_t {
                 return std::clamp((std::int32_t)std::stol(value), -7, 22);
@@ -108,16 +111,17 @@ struct Main {
         }
         cli.no_progress = program.get<bool>("--no-progress");
         cli.level = program.get<std::int32_t>("--level");
+        cli.level_high_entropy = program.get<std::int32_t>("--level-high-entropy");
 
         cli.ar = Ar{
-            .chunk_size = program.get<std::uint32_t>("--chunk-size") * KiB,
+            .chunk_size = std::clamp(program.get<std::uint32_t>("--chunk-size") * MiB, 256 * KiB, 4 * GiB - MiB),
             .min_nest = program.get<std::uint32_t>("--min-ar-size") * KiB,
             .disabled = parse_processors(program.get<std::string>("--no-ar")),
             .no_error = program.get<bool>("--no-ar-error"),
         };
 
         // ensure that we buffer at least one chunk
-        cli.outbundle.flush_size = std::max(cli.outbundle.flush_size, cli.ar.chunk_size * 2);
+        cli.outbundle.flush_size = std::max(cli.outbundle.flush_size, std::min(cli.ar.chunk_size * 2, 1 * GiB));
     }
 
     auto run() -> void {
@@ -147,7 +151,6 @@ struct Main {
         std::cerr << "START: " << path << std::endl;
         auto infile = IO::File(path, IO::READ);
         auto rfile = RMAN::File{};
-        rfile.params.max_uncompressed = cli.chunk_size;
         rfile.size = infile.size();
         rfile.langs = "none";
         rfile.path = fs::relative(fs::absolute(path), fs::absolute(cli.rootfolder)).generic_string();
@@ -164,7 +167,6 @@ struct Main {
                 XXH64_update(&xxstate, &chunk.chunkId, sizeof(chunk.chunkId));
                 p.update(entry.offset + entry.size);
             });
-            XXH64_update(&xxstate, rfile.path.data(), rfile.path.size());
             rfile.fileId = (FileID)(XXH64_digest(&xxstate));
         }
         if (!cli.ar.errors.empty()) {
