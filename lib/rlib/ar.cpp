@@ -6,6 +6,7 @@ auto Ar::PROCESSORS() noexcept -> std::span<Processor const> {
     static constexpr Processor const instance[] = {
         {"fsb", &Ar::process_try_fsb},
         {"fsb5", &Ar::process_try_fsb5},
+        {"load", &Ar::process_try_load},
         {"mac_exe", &Ar::process_try_mac_exe},
         {"mac_fat", &Ar::process_try_mac_fat},
         {"pe", &Ar::process_try_pe},
