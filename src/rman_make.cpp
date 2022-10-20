@@ -60,16 +60,18 @@ struct Main {
             .help("Do not stop on smart chunking error.")
             .default_value(false)
             .implicit_value(true);
-        program.add_argument("--min-ar-size")
-            .default_value(std::uint32_t{1})
-            .help("Smart chunking minimum size in killobytes (0 to disable).")
-            .action([](std::string const& value) -> std::uint32_t { return (std::uint32_t)std::stoul(value); });
 
-        program.add_argument("--chunk-size")
-            .default_value(std::uint32_t{0})
-            .help("Chunk size in megabytes [0, 4096].")
+        program.add_argument("--ar-min")
+            .default_value(std::uint32_t{4})
+            .help("Smart chunking minimum size in killobytes [1, 4096].")
             .action([](std::string const& value) -> std::uint32_t {
-                return std::clamp((std::uint32_t)std::stoul(value), 0u, 4096u);
+                return std::clamp((std::uint32_t)std::stoul(value), 1u, 4096u);
+            });
+        program.add_argument("--chunk-size")
+            .default_value(std::uint32_t{1})
+            .help("Chunk max size in megabytes [1, 64].")
+            .action([](std::string const& value) -> std::uint32_t {
+                return std::clamp((std::uint32_t)std::stoul(value), 1u, 64u);
             });
         program.add_argument("--level")
             .default_value(std::int32_t{6})
@@ -114,14 +116,11 @@ struct Main {
         cli.level_high_entropy = program.get<std::int32_t>("--level-high-entropy");
 
         cli.ar = Ar{
-            .chunk_size = std::clamp(program.get<std::uint32_t>("--chunk-size") * MiB, 256 * KiB, 4 * GiB - MiB),
-            .min_nest = program.get<std::uint32_t>("--min-ar-size") * KiB,
+            .chunk_min = program.get<std::uint32_t>("--ar-min") * KiB,
+            .chunk_max = program.get<std::uint32_t>("--chunk-size") * MiB,
             .disabled = parse_processors(program.get<std::string>("--no-ar")),
             .no_error = program.get<bool>("--no-ar-error"),
         };
-
-        // ensure that we buffer at least one chunk
-        cli.outbundle.flush_size = std::max(cli.outbundle.flush_size, std::min(cli.ar.chunk_size * 2, 1 * GiB));
     }
 
     auto run() -> void {

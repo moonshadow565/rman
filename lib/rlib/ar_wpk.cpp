@@ -19,8 +19,6 @@ struct Ar::WPK::Desc {
 };
 
 auto Ar::process_try_wpk(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool {
-    // Basic sanity check
-    if (top_entry.size <= 16) return false;
     auto reader = IO::Reader(io, top_entry.offset, top_entry.size);
 
     // check if the file is actually WPK
@@ -60,6 +58,7 @@ auto Ar::process_try_wpk(IO const& io, offset_cb cb, Entry const& top_entry) con
         };
     }
 
-    this->process_iter(io, cb, top_entry, std::move(entries));
+    rlib_ar_assert(this->process_iter(io, cb, top_entry, std::move(entries)));
+
     return true;
 }

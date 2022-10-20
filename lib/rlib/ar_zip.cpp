@@ -63,11 +63,11 @@ auto Ar::process_try_zip(IO const &io, offset_cb cb, Entry const &top_entry) con
     // only consider whole files for .zip spliting
     if (top_entry.offset != 0 || top_entry.size != io.size() || top_entry.size < 22) return false;
 
+    auto reader = IO::Reader(io, top_entry.offset, top_entry.size);
+
     // check if the file is actually zip
-    if (auto sig = std::uint32_t{}; !io.read(top_entry.offset, {(char *)&sig, sizeof(sig)}))
-        return false;
-    else if (sig != ZIP::SIGS[0] && sig != ZIP::SIGS[1])
-        return false;
+    auto sig = std::uint32_t{};
+    if (!reader.read(sig) || (sig != ZIP::SIGS[0] && sig != ZIP::SIGS[1])) return false;
 
     auto zip = ZIP(io);
     rlib_ar_assert(mz_zip_reader_init(&zip, top_entry.size, ZIP::FLAGS));
@@ -79,19 +79,17 @@ auto Ar::process_try_zip(IO const &io, offset_cb cb, Entry const &top_entry) con
 
         auto offset = std::uint64_t{};
         rlib_ar_assert(mz_zip_reader_file_offset(&zip, &stat, &offset));
+        rlib_ar_assert(reader.contains(offset, stat.m_comp_size));
 
-        auto entry = Entry{
+        entries[i] = Entry{
             .offset = top_entry.offset + offset,
             .size = stat.m_comp_size,
             .high_entropy = stat.m_method != 0,
             .nest = stat.m_method == 0,
         };
-        rlib_ar_assert(top_entry.size >= entry.offset);
-        rlib_ar_assert(top_entry.size - entry.offset >= entry.size);
-        entries[i] = entry;
     }
 
-    this->process_iter(io, cb, top_entry, std::move(entries));
+    rlib_ar_assert(this->process_iter(io, cb, top_entry, std::move(entries)));
 
     return true;
 }

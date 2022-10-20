@@ -8,12 +8,11 @@ struct Ar::FSB5 {
 };
 
 auto Ar::process_try_fsb5(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool {
-    // Basic sanity check
-    if (top_entry.size <= 16) return false;
     auto reader = IO::Reader(io, top_entry.offset, top_entry.size);
 
     // check if the file is actually FSB5
-    if (auto magic = std::array<char, 4>{}; !reader.read(magic) || magic != FSB5::MAGIC) return false;
+    auto magic = std::array<char, 4>{};
+    if (!reader.read(magic) || magic != FSB5::MAGIC) return false;
 
     auto desc_count = std::size_t{};
     auto toc_size = std::size_t{};
@@ -69,7 +68,7 @@ auto Ar::process_try_fsb5(IO const& io, offset_cb cb, Entry const& top_entry) co
     }
     rlib_ar_assert(last_offset == data_size || last_offset == 0);
 
-    this->process_iter(io, cb, top_entry, std::move(entries));
+    rlib_ar_assert(this->process_iter(io, cb, top_entry, std::move(entries)));
 
     return true;
 }

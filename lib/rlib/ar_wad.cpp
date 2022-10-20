@@ -15,19 +15,20 @@ struct Ar::WAD::Header {
 };
 
 struct Ar::WAD::Desc {
-    std::uint64_t path = {};
-    std::uint32_t offset = {};
-    std::uint32_t size_compressed = {};
-    std::uint32_t size_uncompressed = {};
-    std::uint8_t type : 4 = 1;
-    std::uint8_t subchunks : 4 = {};
-    std::uint8_t pad[3] = {};
-    std::uint64_t checksum = {};
+    std::uint64_t path;
+    std::uint32_t offset;
+    std::uint32_t size_compressed;
+    std::uint32_t size_uncompressed;
+    std::uint8_t type : 4;
+    std::uint8_t subchunks : 4;
+    std::uint8_t pad[3];
+    std::uint64_t checksum;
 };
 
 auto Ar::process_try_wad(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool {
     // We only process top level WADs
     if (top_entry.offset != 0 || top_entry.size != io.size()) return false;
+
     auto reader = IO::Reader(io, top_entry.offset, top_entry.size);
 
     // check if the files is actually WAD
@@ -82,7 +83,7 @@ auto Ar::process_try_wad(IO const& io, offset_cb cb, Entry const& top_entry) con
         };
     }
 
-    this->process_iter(io, cb, top_entry, std::move(entries));
+    rlib_ar_assert(this->process_iter(io, cb, top_entry, std::move(entries)));
 
     return true;
 }

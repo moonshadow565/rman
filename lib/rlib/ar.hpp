@@ -23,11 +23,11 @@ namespace rlib {
 
         struct Processor {
             std::string_view name;
-            auto(Ar::*method)(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
+            bool (Ar::*method)(IO const& io, offset_cb cb, Entry const& top_entry) const;
         };
 
-        std::size_t chunk_size;
-        std::size_t min_nest;
+        std::size_t chunk_min;
+        std::size_t chunk_max;
         std::bitset<32> disabled;
         bool no_error;
         mutable std::vector<std::string> errors;
@@ -41,6 +41,8 @@ namespace rlib {
     private:
         struct FSB;
         struct FSB5;
+        struct MAC;
+        struct PE;
         struct WAD;
         struct WPK;
         struct ZIP;
@@ -51,13 +53,19 @@ namespace rlib {
 
         auto process_try_fsb5(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
 
+        auto process_try_mac_exe(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
+
+        auto process_try_mac_fat(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
+
+        auto process_try_pe(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
+
         auto process_try_wad(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
 
         auto process_try_wpk(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
 
         auto process_try_zip(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
 
-        auto process_iter(IO const& io, offset_cb cb, Entry const& top_entry, std::vector<Entry> entries) const -> void;
+        auto process_iter(IO const& io, offset_cb cb, Entry const& top_entry, std::vector<Entry> entries) const -> bool;
 
         auto push_error(Entry const& top_entry, char const* func, char const* expr) const -> void;
     };

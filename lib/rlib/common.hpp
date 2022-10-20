@@ -129,7 +129,16 @@ namespace rlib {
 
     template <auto... M>
     inline auto sort_by(auto beg, auto end) noexcept -> void {
-        std::sort(beg, end, [](auto const& l, auto const& r) { return std::tie((l.*M)...) < std::tie((r.*M)...); });
+        return std::sort(beg, end, [](auto const& l, auto const& r) {
+            return std::tie((l.*M)...) < std::tie((r.*M)...);
+        });
+    }
+
+    template <auto... M>
+    inline auto uniq_by(auto beg, auto end) noexcept -> auto{
+        return std::unique(beg, end, [](auto const& l, auto const& r) {
+            return std::tie((l.*M)...) == std::tie((r.*M)...);
+        });
     }
 
     template <typename F>
