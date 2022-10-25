@@ -1,4 +1,3 @@
-#include <common/xxhash.h>
 #include <fmt/args.h>
 #include <fmt/format.h>
 
@@ -19,7 +18,6 @@ struct Main {
         std::string inbundle = {};
         std::string inmanifest = {};
         std::string inrelease = {};
-        std::vector<std::string> inputs = {};
         bool no_progress = {};
     } cli = {};
 
@@ -40,7 +38,7 @@ struct Main {
 
     auto run() -> void {
         std::cerr << "Processing input bundle ... " << std::endl;
-        auto inbundle = RCache({cli.inbundle});
+        auto inbundle = RCache({.path = cli.inbundle, .readonly = true});
 
         rlib_trace("Manifest file: %s", cli.inmanifest.c_str());
         std::cerr << "Reading input manifest ... " << std::endl;

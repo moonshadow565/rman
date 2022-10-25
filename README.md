@@ -1,7 +1,7 @@
 Set of CLI tools for rito manifest and bundle files
 
 ```sh
-Usage: rbun-chk.exe [options] input 
+Usage: rbun-chk [options] input 
 
 Checks one or more bundles for errors.
 
@@ -17,7 +17,7 @@ Optional arguments:
 ```
 
 ```sh
-Usage: rbun-ex.exe [options] output input 
+Usage: rbun-ex [options] output input 
 
 Extracts one or more bundles.
 
@@ -35,7 +35,7 @@ Optional arguments:
 ```
 
 ```sh
-Usage: rbun-ls.exe [options] input 
+Usage: rbun-ls [options] input 
 
 Lists contents of one or more bundles.
 
@@ -49,7 +49,7 @@ Optional arguments:
 ```
 
 ```sh
-Usage: rbun-merge.exe [options] output input 
+Usage: rbun-merge [options] output input 
 
 Adds one or more bundles into first first bundle.
 
@@ -68,7 +68,7 @@ Optional arguments:
 ```
 
 ```sh
-Usage: rbun-usage.exe [options] input 
+Usage: rbun-usage [options] input 
 
 Collects size usage statistics on one or more bundle.
 
@@ -81,7 +81,7 @@ Optional arguments:
 ```
 
 ```sh
-Usage: rman-bl.exe [options] manifest 
+Usage: rman-bl [options] manifest 
 
 Lists bundle names used in manifest.
 
@@ -95,7 +95,21 @@ Optional arguments:
 ```
 
 ```sh
-Usage: rman-dl.exe [options] manifest output 
+Usage: rman-chk [options] inmanifest inbundle 
+
+Splits JRMAN .
+
+Positional arguments:
+inmanifest   	Manifest to read from. [required]
+inbundle     	Source bundle to read from. [required]
+
+Optional arguments:
+-h --help    	shows help message and exits [default: false]
+-v --version 	prints version information and exits [default: false]
+```
+
+```sh
+Usage: rman-dl [options] manifest output 
 
 Downloads or repairs files in manifest.
 
@@ -128,7 +142,7 @@ Optional arguments:
 ```
 
 ```sh
-Usage: rman-ls.exe [options] manifest 
+Usage: rman-ls [options] manifest 
 
 Lists files in manifest.
 
@@ -144,7 +158,7 @@ Optional arguments:
 ```
 
 ```sh
-Usage: rman-make.exe [options] outmanifest outbundle rootfolder input 
+Usage: rman-make [options] outmanifest outbundle rootfolder input 
 
 Lists bundle names used in manifest.
 
@@ -152,19 +166,35 @@ Positional arguments:
 outmanifest          	Manifest to write into. [required]
 outbundle            	Bundle file to write into. [required]
 rootfolder           	Root folder to rebase from. [required]
-input                	Files or folders for manifest. [required]
+input                	Files or folders for manifest. [default: {}]
 
 Optional arguments:
 -h --help            	shows help message and exits [default: false]
 -v --version         	prints version information and exits [default: false]
 --no-progress        	Do not print progress. [default: false]
---no-ar              	Regex of disable smart chunkers, can be any of: fsb, fsb5, wad, wpk, zip [default: ""]
---no-ar-error        	Do not print progress. [default: false]
---min-ar-size        	Smart chunking minimum size in killobytes (0 to disable). [default: 1]
---chunk-size         	Chunk size in kilobytes. [default: 256]
+--no-ar              	Regex of disable smart chunkers, can be any of: fsb, fsb5, load, mac_exe, mac_fat, pe, wad, wpk, zip [default: ""]
+--no-ar-error        	Do not stop on smart chunking error. [default: false]
+--ar-min             	Smart chunking minimum size in killobytes [1, 4096]. [default: 4]
+--chunk-size         	Chunk max size in megabytes [1, 64]. [default: 1]
 --level              	Compression level for zstd. [default: 6]
 --level-high-entropy 	Set compression level for high entropy chunks(0 for no special handling). [default: 0]
 --buffer             	Size for buffer before flush to disk in megabytes [1, 4096] [default: 32]
 --limit              	Size for bundle limit in gigabytes [0, 4096] [default: 4096]
+```
+
+```sh
+Usage: rman-rads [options] outmanifest inmanifest inbundle inrelease 
+
+Splits JRMAN .
+
+Positional arguments:
+outmanifest  	Manifest to write into. [required]
+inmanifest   	Manifest to read from. [required]
+inbundle     	Source bundle to read from. [required]
+inrelease    	Project or solution path inside bundle. [required]
+
+Optional arguments:
+-h --help    	shows help message and exits [default: false]
+-v --version 	prints version information and exits [default: false]
 ```
 

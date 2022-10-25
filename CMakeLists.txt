@@ -55,6 +55,9 @@ target_link_libraries(rman-make PRIVATE rlib)
 add_executable(rman-rads src/rman_rads.cpp)
 target_link_libraries(rman-rads PRIVATE rlib)
 
+add_executable(rman-chk src/rman_chk.cpp)
+target_link_libraries(rman-chk PRIVATE rlib)
+
 add_executable(rbun-chk src/rbun_chk.cpp)
 target_link_libraries(rbun-chk PRIVATE rlib)
 
