@@ -19,11 +19,6 @@ namespace rlib {
     enum class ManifestID : std::uint64_t { None };
 
     struct RMAN {
-        struct Filter {
-            std::optional<std::regex> path;
-            std::optional<std::regex> langs;
-        };
-
         struct File {
             FileID fileId;
             std::uint8_t permissions;
@@ -37,21 +32,29 @@ namespace rlib {
 
             static auto undump(std::string_view data) -> File;
 
-            auto matches(Filter const& filter) const noexcept -> bool;
-
             auto verify(fs::path const& path, RChunk::Dst::data_cb on_good) const -> std::vector<RChunk::Dst>;
+        };
+
+        struct Filter {
+            std::optional<std::regex> path;
+            std::optional<std::regex> langs;
+
+            auto operator()(File const& file) const noexcept -> bool;
         };
 
         ManifestID manifestId;
         std::vector<File> files;
         std::vector<RBUN> bundles;
 
-        static RMAN read(std::span<char const> data);
-        static RMAN read_file(fs::path const& path);
+        static auto read(std::span<char const> data, Filter const& filter = {}) -> RMAN;
+        static auto read_file(fs::path const& path, Filter const& filter = {}) -> RMAN;
 
         auto lookup() const -> std::unordered_map<std::string, File const*>;
 
     private:
+        static auto read_jrman(std::span<char const> data, Filter const& filter) -> RMAN;
+        static auto read_zrman(std::span<char const> data, Filter const& filter) -> RMAN;
+
         struct Raw;
     };
 }

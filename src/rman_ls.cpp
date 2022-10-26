@@ -55,12 +55,9 @@ struct Main {
 
     auto run() -> void {
         rlib_trace("Manifest file: %s", cli.manifest.c_str());
-        auto manifest = RMAN::read_file(cli.manifest);
+        auto manifest = RMAN::read_file(cli.manifest, cli.filter);
 
         for (auto const& rfile : manifest.files) {
-            if (!rfile.matches(cli.filter)) {
-                continue;
-            }
             fmt::dynamic_format_arg_store<fmt::format_context> store{};
             store.push_back(fmt::arg("path", rfile.path));
             store.push_back(fmt::arg("size", rfile.size));

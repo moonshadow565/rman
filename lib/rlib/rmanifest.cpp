@@ -17,6 +17,16 @@
 using namespace rlib;
 using json = nlohmann::json;
 
+auto RMAN::Filter::operator()(File const& file) const noexcept -> bool {
+    if (langs && !std::regex_search(file.langs, *langs)) {
+        return true;
+    }
+    if (path && !std::regex_search(file.path, *path)) {
+        return true;
+    }
+    return false;
+}
+
 struct RMAN::Raw {
     struct Offset {
         char const* beg = {};
@@ -179,7 +189,7 @@ struct RMAN::Raw {
     std::vector<RBUN> bundles;
     std::vector<RMAN::File> files;
 
-    auto parse(std::span<char const> src) -> void {
+    auto parse(std::span<char const> src) && -> RMAN {
         this->parse_header(src);
         auto body = zstd_decompress(src.subspan(header.offset, header.length), header.body_length);
         auto offset = Offset{body.data(), 0, (std::int32_t)body.size()};
@@ -190,6 +200,11 @@ struct RMAN::Raw {
         // this->parse_keys(body_table[4].as<std::vector<Table>>());
         this->parse_bundles(body_table[0].as<std::vector<Table>>());
         this->parse_files(body_table[2].as<std::vector<Table>>());
+        return RMAN{
+            .manifestId = std::move(this->header.manifestId),
+            .files = std::move(this->files),
+            .bundles = std::move(this->bundles),
+        };
     }
 
 private:
@@ -351,36 +366,40 @@ private:
     }
 };
 
-RMAN RMAN::read(std::span<char const> data) {
-    rlib_assert(data.size() >= 5);
-    if (memcmp(data.data(), "JRMAN", 5) == 0) {
-        auto files = std::vector<RMAN::File>{};
-        auto const eof = data.data() + data.size();
-        // spliting lines in C++ is hard
-        for (auto i = std::find(data.data(), eof, '\n'); i != eof;) {
-            while (i != eof && (*i == '\r' || *i == '\n' || *i == ' ' || *i == '\t' || *i == '\v' || *i == '\f')) ++i;
-            auto const end = std::find(i, eof, '\n');
-            if (i != eof) {
-                auto line = std::string_view{i, end};
-                files.push_back(File::undump(line));
-            }
-            i = end;
+auto RMAN::read_jrman(std::span<char const> data, Filter const& filter) -> RMAN {
+    auto files = std::vector<RMAN::File>{};
+    auto [line, iter] = str_split({data.data(), data.size()}, '\n');
+    while (!iter.empty()) {
+        std::tie(line, iter) = str_split(iter, '\n');
+        line = str_strip(line);
+        if (line.empty()) {
+            continue;
         }
-        return RMAN{.files = std::move(files)};
+        auto file = File::undump(line);
+        if (!filter(file)) {
+            files.push_back(std::move(file));
+        }
     }
-    auto raw = Raw{};
-    raw.parse(data);
-    return RMAN{
-        .manifestId = std::move(raw.header.manifestId),
-        .files = std::move(raw.files),
-        .bundles = std::move(raw.bundles),
-    };
+    return RMAN{.files = std::move(files)};
 }
 
-RMAN RMAN::read_file(fs::path const& path) {
+auto RMAN::read_zrman(std::span<char const> data, Filter const& filter) -> RMAN {
+    rlib_assert(!"not implemented");
+    return {};
+}
+
+auto RMAN::read(std::span<char const> data, Filter const& filter) -> RMAN {
+    rlib_assert(data.size() >= 5);
+    if (std::memcmp(data.data(), "ZRMAN", 5) == 0) {
+        return read_jrman(data, filter);
+    }
+    return Raw{}.parse(data);
+}
+
+auto RMAN::read_file(fs::path const& path, Filter const& filter) -> RMAN {
     auto infile = IO::MMap(path, IO::READ);
     auto data = infile.copy(0, infile.size());
-    return RMAN::read(data);
+    return RMAN::read(data, filter);
 }
 
 auto RMAN::lookup() const -> std::unordered_map<std::string, File const*> {
@@ -435,16 +454,6 @@ auto RMAN::File::undump(std::string_view data) -> File {
         rlib_assert((unsigned)chunk.hash_type > 0 && (unsigned)chunk.hash_type <= 3);
     }
     return file;
-}
-
-auto RMAN::File::matches(Filter const& filter) const noexcept -> bool {
-    if (filter.langs && !std::regex_search(langs, *filter.langs)) {
-        return false;
-    }
-    if (filter.path && !std::regex_search(path, *filter.path)) {
-        return false;
-    }
-    return true;
 }
 
 auto RMAN::File::verify(fs::path const& path, RChunk::Dst::data_cb on_data) const -> std::vector<RChunk::Dst> {

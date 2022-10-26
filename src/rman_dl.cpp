@@ -142,7 +142,7 @@ struct Main {
 
     auto run() -> void {
         rlib_trace("Manifest file: %s", cli.manifest.c_str());
-        auto manifest = RMAN::read_file(cli.manifest);
+        auto manifest = RMAN::read_file(cli.manifest, cli.filter);
 
         if (!cli.no_write) {
             fs::create_directories(cli.output);
@@ -158,8 +158,6 @@ struct Main {
         if (!cli.cdn.url.empty() && manifest.manifestId != ManifestID::None) {
             cdn = std::make_unique<RCDN>(cli.cdn, cache.get());
         }
-
-        remove_if(manifest.files, [&](RMAN::File const& rfile) { return !rfile.matches(cli.filter); });
 
         for (std::uint32_t index = manifest.files.size(); auto const& rfile : manifest.files) {
             download_file(rfile, index--);

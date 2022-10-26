@@ -163,6 +163,12 @@ namespace rlib {
         return {str, {}};
     }
 
+    inline auto str_strip(std::string_view str) noexcept -> std::string_view {
+        while (str.empty() && ::isspace(str.front())) str.remove_prefix(1);
+        while (str.empty() && ::isspace(str.back())) str.remove_suffix(1);
+        return str;
+    }
+
     template <typename Signature>
     struct function_ref;
 

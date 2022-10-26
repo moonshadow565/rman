@@ -42,7 +42,7 @@ struct Main {
 
         rlib_trace("Manifest file: %s", cli.inmanifest.c_str());
         std::cerr << "Reading input manifest ... " << std::endl;
-        auto manifest = RMAN::read_file(cli.inmanifest);
+        auto manifest = RMAN::read_file(cli.inmanifest, make_realm_filter());
 
         std::cerr << "Indexing input manifest ... " << std::endl;
         auto lookup = manifest.lookup();
@@ -57,6 +57,20 @@ struct Main {
             auto outjson = file.dump();
             outfile.write(outfile.size(), outjson);
         });
+    }
+
+    auto make_realm_filter() const noexcept -> RMAN::Filter {
+        if (auto [realm, rest] = str_split(cli.inrelease, "projects/"); !realm.empty()) {
+            return RMAN::Filter{
+                .path = std::regex{std::string(realm) + ".*", std::regex::optimize | std::regex::icase},
+            };
+        }
+        if (auto [realm, rest] = str_split(cli.inrelease, "solutions/"); !realm.empty()) {
+            return RMAN::Filter{
+                .path = std::regex{std::string(realm) + ".*", std::regex::optimize | std::regex::icase},
+            };
+        }
+        return {};
     }
 
     auto find_file(std::string path, auto const& lookup) const noexcept -> RMAN::File const* {
