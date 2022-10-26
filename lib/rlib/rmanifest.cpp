@@ -372,26 +372,60 @@ auto RMAN::read_jrman(std::span<char const> data, Filter const& filter) -> RMAN 
     while (!iter.empty()) {
         std::tie(line, iter) = str_split(iter, '\n');
         line = str_strip(line);
-        if (line.empty()) {
-            continue;
-        }
-        auto file = File::undump(line);
-        if (!filter(file)) {
-            files.push_back(std::move(file));
+        if (!line.empty() && line != "JRMAN") {
+            auto file = File::undump(line);
+            if (!filter(file)) {
+                files.push_back(std::move(file));
+            }
         }
     }
     return RMAN{.files = std::move(files)};
 }
 
 auto RMAN::read_zrman(std::span<char const> data, Filter const& filter) -> RMAN {
-    rlib_assert(!"not implemented");
-    return {};
+    auto files = std::vector<RMAN::File>{};
+    auto BUF_SIZE = (128u + 32u) * MiB;
+
+    auto ctx = std::shared_ptr<ZSTD_DCtx>(ZSTD_createDCtx(), &ZSTD_freeDCtx);
+    auto buffer = std::make_unique<char[]>(BUF_SIZE);
+
+    auto src = ZSTD_inBuffer{data.data(), data.size()};
+    auto dst = ZSTD_outBuffer{buffer.get(), BUF_SIZE};
+
+    while (src.pos != src.size) {
+        rlib_assert_zstd(ZSTD_decompressStream(ctx.get(), &dst, &src));
+        auto start = buffer.get();
+        auto const end = buffer.get() + dst.pos;
+        for (;;) {
+            auto new_line = std::find(start, end, '\n');
+            if (new_line == end) {
+                break;
+            }
+            auto line = str_strip({start, (std::size_t)(new_line - start)});
+            if (!line.empty() && line != "JRMAN") {
+                auto file = File::undump(line);
+                if (!filter(file)) {
+                    files.push_back(std::move(file));
+                }
+            }
+            start = new_line + 1;
+        }
+        if (start != buffer.get() && (end - start) != 0) {
+            std::memmove(buffer.get(), start, end - start);
+        }
+        dst.dst = buffer.get();
+        dst.pos = end - start;
+    }
+    return RMAN{.files = std::move(files)};
 }
 
 auto RMAN::read(std::span<char const> data, Filter const& filter) -> RMAN {
     rlib_assert(data.size() >= 5);
-    if (std::memcmp(data.data(), "ZRMAN", 5) == 0) {
+    if (std::memcmp(data.data(), "JRMAN", 5) == 0) {
         return read_jrman(data, filter);
+    }
+    if (std::memcmp(data.data(), "\x28\xB5\x2F\xFD", 4) == 0) {
+        return read_zrman(data, filter);
     }
     return Raw{}.parse(data);
 }
