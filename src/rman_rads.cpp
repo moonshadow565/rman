@@ -60,14 +60,20 @@ struct Main {
     }
 
     auto make_realm_filter() const noexcept -> RMAN::Filter {
+        constexpr auto RE_FLAGS = std::regex::optimize | std::regex::icase | std::regex::basic;
+        if (cli.inrelease.ends_with('/')) {
+            return RMAN::Filter{
+                .path = std::regex{cli.inrelease + ".*", RE_FLAGS},
+            };
+        }
         if (auto [realm, rest] = str_split(cli.inrelease, "projects/"); !realm.empty() && !rest.empty()) {
             return RMAN::Filter{
-                .path = std::regex{std::string(realm) + ".*", std::regex::optimize | std::regex::icase},
+                .path = std::regex{std::string(realm) + ".*", RE_FLAGS},
             };
         }
         if (auto [realm, rest] = str_split(cli.inrelease, "solutions/"); !realm.empty() && !rest.empty()) {
             return RMAN::Filter{
-                .path = std::regex{std::string(realm) + ".*", std::regex::optimize | std::regex::icase},
+                .path = std::regex{std::string(realm) + ".*", RE_FLAGS},
             };
         }
         return {};
@@ -93,6 +99,9 @@ struct Main {
     }
 
     auto process(auto const& path, auto const& lookup, auto const& provider, auto&& cb) const -> void {
+        if (path.ends_with("/")) {
+            return process_manual(path, lookup, cb);
+        }
         if (path.find("projects/") != std::string::npos) {
             return process_rls(path, lookup, provider, cb);
         }
@@ -120,6 +129,7 @@ struct Main {
     auto process_rls(auto const& path, auto const& lookup, auto const& provider, auto&& cb) const -> void {
         try {
             rlib_trace("path: %s", path.c_str());
+            rlib_assert(path.ends_with("releasemanifest"));
             auto data = read_file(path, lookup, provider);
             auto [realm, rest] = str_split(path, "projects/");
             auto rls = rads::RLS::read(data);
@@ -145,6 +155,7 @@ struct Main {
     auto process_sln(auto const& path, auto const& lookup, auto const& provider, auto&& cb) const -> void {
         try {
             rlib_trace("path: %s", path.c_str());
+            rlib_assert(path.ends_with("solutionmanifest"));
             auto data = read_file(path, lookup, provider);
             auto [realm, rest] = str_split(path, "solutions/");
             auto sln = rads::SLN::read(data);
@@ -164,6 +175,19 @@ struct Main {
                 std::cout << error << std::endl;
             }
             error_stack().clear();
+        }
+    }
+
+    auto process_manual(auto path, auto const& lookup, auto&& cb) const -> void {
+        rlib_trace("path: %s", path.c_str());
+        std::transform(path.begin(), path.end(), path.begin(), ::tolower);
+        for (auto const& [name, file] : lookup) {
+            if (!name.starts_with(path)) {
+                continue;
+            }
+            auto rfile = RMAN::File(*file);
+            rfile.path = rfile.path.substr(path.size());
+            cb(std::move(rfile));
         }
     }
 };
