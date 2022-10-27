@@ -60,12 +60,12 @@ struct Main {
     }
 
     auto make_realm_filter() const noexcept -> RMAN::Filter {
-        if (auto [realm, rest] = str_split(cli.inrelease, "projects/"); !realm.empty()) {
+        if (auto [realm, rest] = str_split(cli.inrelease, "projects/"); !realm.empty() && !rest.empty()) {
             return RMAN::Filter{
                 .path = std::regex{std::string(realm) + ".*", std::regex::optimize | std::regex::icase},
             };
         }
-        if (auto [realm, rest] = str_split(cli.inrelease, "solutions/"); !realm.empty()) {
+        if (auto [realm, rest] = str_split(cli.inrelease, "solutions/"); !realm.empty() && !rest.empty()) {
             return RMAN::Filter{
                 .path = std::regex{std::string(realm) + ".*", std::regex::optimize | std::regex::icase},
             };

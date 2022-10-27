@@ -155,10 +155,17 @@ namespace rlib {
         return ptr >= target.data() && (target.data() + target.size() - ptr) >= size;
     }
 
-    template <typename T>
-    inline auto str_split(std::string_view str, T&& s) noexcept -> std::pair<std::string_view, std::string_view> {
-        if (auto n = str.find(std::forward<T>(s)); n != std::string_view::npos) {
+    inline auto str_split(std::string_view str, char c) noexcept -> std::pair<std::string_view, std::string_view> {
+        if (auto n = str.find(c); n != std::string_view::npos) {
             return {str.substr(0, n), str.substr(n + 1)};
+        }
+        return {str, {}};
+    }
+
+    inline auto str_split(std::string_view str, std::string_view s) noexcept
+        -> std::pair<std::string_view, std::string_view> {
+        if (auto n = str.find(s); n != std::string_view::npos) {
+            return {str.substr(0, n), str.substr(n + s.size())};
         }
         return {str, {}};
     }
