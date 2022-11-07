@@ -1,10 +1,11 @@
 #include "rmanifest.hpp"
 
+#include <json_struct/json_struct.h>
 #include <zstd.h>
 
+#include <charconv>
 #include <cstring>
 #include <limits>
-#include <nlohmann/json.hpp>
 #include <regex>
 #include <stdexcept>
 #include <type_traits>
@@ -15,7 +16,63 @@
 #include "iofile.hpp"
 
 using namespace rlib;
-using json = nlohmann::json;
+
+namespace JS {
+    template <typename T>
+    struct TypeHandlerHex {
+        static inline Error to(T& to_type, ParseContext& context) {
+            auto const beg = context.token.value.data;
+            auto const end = beg + context.token.value.size;
+            auto value = std::uint64_t{};
+            auto const ec_ptr = std::from_chars(beg, end, value, 16);
+            if (ec_ptr.ec != std::errc{}) [[unlikely]] {
+                return Error::FailedToParseInt;
+            }
+            to_type = static_cast<T>(value);
+            return Error::NoError;
+        }
+
+        static void from(T const& from_type, Token& token, Serializer& serializer) {
+            std::string buf = fmt::format("{}", from_type);
+            token.value_type = Type::String;
+            token.value.data = buf.data();
+            token.value.size = buf.size();
+            serializer.write(token);
+        }
+    };
+
+    template <typename T, auto MINIMUM, auto MAXIMUM, typename U = std::underlying_type_t<T>>
+    struct TypeHandlerEnum {
+        static inline Error to(T& to_type, ParseContext& context) {
+            auto tmp = U{};
+            auto error = TypeHandler<U>::to(tmp, context);
+            if (error == Error::NoError) {
+                if (!(tmp >= MINIMUM && tmp <= MAXIMUM)) [[unlikely]] {
+                    error = Error::IllegalDataValue;
+                } else {
+                    to_type = static_cast<T>(tmp);
+                }
+            }
+            return error;
+        }
+
+        static void from(T const& from_type, Token& token, Serializer& serializer) {
+            TypeHandler<U>::from(static_cast<U>(from_type), token, serializer);
+        }
+    };
+
+    template <>
+    struct TypeHandler<HashType> : TypeHandlerEnum<HashType, 0, 3> {};
+
+    template <>
+    struct TypeHandler<FileID> : TypeHandlerHex<FileID> {};
+
+    template <>
+    struct TypeHandler<ChunkID> : TypeHandlerHex<ChunkID> {};
+}
+
+JS_OBJ_EXT(rlib::RChunk::Dst, chunkId, hash_type, uncompressed_size);
+JS_OBJ_EXT(rlib::RMAN::File, chunks, fileId, langs, link, path, permissions, size);
 
 auto RMAN::Filter::operator()(File const& file) const noexcept -> bool {
     if (langs && !std::regex_search(file.langs, *langs)) {
@@ -447,46 +504,24 @@ auto RMAN::lookup() const -> std::unordered_map<std::string, File const*> {
 }
 
 auto RMAN::File::dump() const -> std::string {
-    auto const& file = *this;
-    auto jfile = json{
-        {"permissions", file.permissions},
-        {"fileId", fmt::format("{}", file.fileId)},
-        {"path", file.path},
-        {"link", file.link},
-        {"langs", file.langs},
-        {"size", file.size},
-        {"chunks", json::array()},
-    };
-    for (auto const& chunk : file.chunks) {
-        jfile["chunks"].emplace_back() = json{
-            {"chunkId", fmt::format("{}", chunk.chunkId)},
-            {"uncompressed_size", chunk.uncompressed_size},
-            {"hash_type", chunk.hash_type},
-        };
-    }
-    auto result = jfile.dump();
+    auto result = JS::serializeStruct(*this, JS::SerializerOptions(JS::SerializerOptions::Compact));
     result.push_back('\n');
     return result;
 }
 
 auto RMAN::File::undump(std::string_view data) -> File {
+    auto context = JS::ParseContext(data.data(), data.size());
     auto file = File{};
-    auto jfile = json::parse(data);
-    file.permissions = jfile.at("permissions");
-    file.fileId = (FileID)from_hex(jfile.at("fileId")).value();
-    file.path = jfile.at("path");
-    file.link = jfile.at("link");
-    file.langs = jfile.at("langs");
-    file.size = jfile.at("size");
-    for (std::uint64_t uncompressed_offset = 0; auto const& jchunk : jfile.at("chunks")) {
-        auto& chunk = file.chunks.emplace_back();
-        chunk.chunkId = (ChunkID)from_hex(jchunk.at("chunkId")).value();
-        chunk.uncompressed_size = jchunk.at("uncompressed_size");
-        chunk.hash_type = jchunk.at("hash_type");
+    auto error = context.parseTo(file);
+    if (error != JS::Error::NoError) {
+        rlib_error(context.makeErrorString().c_str());
+    }
+    auto uncompressed_offset = std::uint64_t{};
+    for (auto& chunk : file.chunks) {
         chunk.uncompressed_offset = uncompressed_offset;
         uncompressed_offset += chunk.uncompressed_size;
-        rlib_assert((unsigned)chunk.hash_type > 0 && (unsigned)chunk.hash_type <= 3);
     }
+    rlib_assert(uncompressed_offset == file.size);
     return file;
 }
 

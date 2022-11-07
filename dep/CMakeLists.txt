@@ -100,16 +100,16 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(fmt)
 
 FetchContent_Declare(
-    json
-    URL https://github.com/nlohmann/json/releases/download/v3.9.1/include.zip
+    json_struct
+    URL https://github.com/jorgen/json_struct/archive/de80d452b3cc1688dfc2967dbfef5cb501e925d3.zip
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
 )
-FetchContent_GetProperties(json)
-if(NOT json_POPULATED)
-    FetchContent_Populate(json)
-    add_library(json INTERFACE)
-    target_include_directories(json INTERFACE ${json_SOURCE_DIR}/include)
+FetchContent_GetProperties(json_struct)
+if(NOT json_struct_POPULATED)
+    FetchContent_Populate(json_struct)
+    add_library(json_struct INTERFACE)
+    target_include_directories(json_struct INTERFACE ${json_struct_SOURCE_DIR}/include)
 endif()
 
 FetchContent_Declare(
@@ -117,6 +117,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/richgel999/miniz.git
     GIT_TAG        76b3a872855388c735c564905da030f26334f3b3
 )
+
 FetchContent_GetProperties(miniz)
 if(NOT miniz_POPULATED)
     FetchContent_Populate(miniz)

@@ -38,7 +38,8 @@ add_library(rlib STATIC
     lib/rlib/rmanifest.hpp
 )
 target_include_directories(rlib PUBLIC lib/)
-target_link_libraries(rlib PUBLIC argparse libcurl zstd digestpp fmt json miniz)
+target_link_libraries(rlib PUBLIC argparse libcurl zstd fmt)
+target_link_libraries(rlib PRIVATE json_struct digestpp miniz)
 
 add_executable(rman-dl src/rman_dl.cpp)
 target_link_libraries(rman-dl PRIVATE rlib)
