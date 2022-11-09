@@ -21,7 +21,8 @@ namespace rlib {
 
         auto add(RChunk const& chunk, std::span<char const> data) -> bool;
 
-        auto add_uncompressed(std::span<char const> data, int level) -> RChunk::Src;
+        auto add_uncompressed(std::span<char const> data, int level, HashType hash_type = HashType::RITO_HKDF)
+            -> RChunk::Src;
 
         auto contains(ChunkID chunkId) const noexcept -> bool;
 

@@ -88,8 +88,8 @@ auto RCache::add(RChunk const& chunk, std::span<char const> data) -> bool {
     return true;
 }
 
-auto RCache::add_uncompressed(std::span<char const> src, int level) -> RChunk::Src {
-    auto id = RChunk::hash(src, HashType::RITO_HKDF);
+auto RCache::add_uncompressed(std::span<char const> src, int level, HashType hash_type) -> RChunk::Src {
+    auto id = RChunk::hash(src, hash_type);
     auto chunk = this->find(id);
     if (chunk.chunkId != ChunkID::None) {
         rlib_assert(chunk.uncompressed_size == src.size());

@@ -11,7 +11,7 @@ struct Main {
     struct CLI {
         RCache::Options output = {};
         std::vector<std::string> inputs = {};
-        bool no_hash = {};
+        int level_recompress = {};
         bool no_extract = {};
         bool no_progress = {};
     } cli = {};
@@ -22,11 +22,16 @@ struct Main {
         program.add_argument("output").help("Bundle file to write into.").required();
         program.add_argument("input").help("Bundle file(s) or folder to write from.").remaining().required();
 
+        program.add_argument("--level-recompress")
+            .default_value(std::int32_t{0})
+            .help("Re-compression level for zstd(0 to disable recompression).")
+            .action([](std::string const& value) -> std::int32_t {
+                return std::clamp((std::int32_t)std::stol(value), -7, 22);
+            });
         program.add_argument("--no-extract")
-            .help("Do not even attempt to extract chunk.")
+            .help("Do not extract and verify chunk hash.")
             .default_value(false)
             .implicit_value(true);
-        program.add_argument("--no-hash").help("Do not verify hash.").default_value(false).implicit_value(true);
         program.add_argument("--no-progress")
             .help("Do not print progress to cerr.")
             .default_value(false)
@@ -52,8 +57,8 @@ struct Main {
             .max_size = program.get<std::uint32_t>("--limit") * GiB,
         };
         cli.inputs = program.get<std::vector<std::string>>("input");
-        cli.no_hash = program.get<bool>("--no-extract");
-        cli.no_extract = program.get<bool>("--no-hash");
+        cli.level_recompress = program.get<std::int32_t>("--level-recompress");
+        cli.no_extract = program.get<bool>("--no-extract");
         cli.no_progress = program.get<bool>("--no-progress");
     }
 
@@ -83,16 +88,20 @@ struct Main {
                 for (auto const& chunk : bundle.chunks) {
                     if (!output.contains(chunk.chunkId)) {
                         auto src = infile.copy(offset, chunk.compressed_size);
-                        if (!cli.no_extract) {
+                        if (cli.level_recompress) {
                             auto dst = zstd_decompress(src, chunk.uncompressed_size);
-                            if (!cli.no_hash) {
-                                auto hash_type = RChunk::hash_type(dst, chunk.chunkId);
-                                rlib_assert(hash_type != HashType::None);
-                            }
+                            auto hash_type = RChunk::hash_type(dst, chunk.chunkId);
+                            rlib_assert(hash_type != HashType::None);
+                            output.add_uncompressed(dst, cli.level_recompress, hash_type);
+                        } else if (!cli.no_extract) {
+                            auto dst = zstd_decompress(src, chunk.uncompressed_size);
+                            auto hash_type = RChunk::hash_type(dst, chunk.chunkId);
+                            rlib_assert(hash_type != HashType::None);
+                            output.add(chunk, src);
                         } else {
                             rlib_assert(zstd_frame_decompress_size(src) == chunk.uncompressed_size);
+                            output.add(chunk, src);
                         }
-                        output.add(chunk, src);
                     }
                     offset += chunk.compressed_size;
                     p.update(offset);
