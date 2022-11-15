@@ -52,6 +52,10 @@ struct Main {
             .remaining()
             .default_value(std::vector<std::string>{});
 
+        program.add_argument("--append")
+            .help("Append manifest instead of overwriting.")
+            .default_value(false)
+            .implicit_value(true);
         program.add_argument("--no-progress").help("Do not print progress.").default_value(false).implicit_value(true);
         program.add_argument("--no-ar")
             .help("Regex of disable smart chunkers, can be any of: " + Ar::PROCESSORS_LIST())
@@ -112,6 +116,7 @@ struct Main {
             cli.inputs.push_back(cli.rootfolder);
         }
         cli.no_progress = program.get<bool>("--no-progress");
+        cli.no_progress = program.get<bool>("--append");
         cli.level = program.get<std::int32_t>("--level");
         cli.level_high_entropy = program.get<std::int32_t>("--level-high-entropy");
 
@@ -133,23 +138,20 @@ struct Main {
         std::cerr << "Processing output bundle ... " << std::endl;
         auto outbundle = RCache(cli.outbundle);
 
-        std::cerr << "Create output manifest..." << std::endl;
-        auto outfile = IO::File(cli.outmanifest, IO::WRITE);
-        outfile.resize(0, 0);
-        outfile.write(0, {"JRMAN\n", 6});
+        std::cerr << "Create output manifest ..." << std::endl;
+        auto writer = RFile::writer(cli.outmanifest, cli.append);
 
         std::cerr << "Processing input files ... " << std::endl;
         for (std::uint32_t index = paths.size(); auto const& path : paths) {
             auto file = add_file(path, outbundle, index--);
-            auto outjson = file.dump();
-            outfile.write(outfile.size(), outjson);
+            writer(std::move(file));
         }
     }
 
-    auto add_file(fs::path const& path, RCache& outbundle, std::uint32_t index) -> RMAN::File {
+    auto add_file(fs::path const& path, RCache& outbundle, std::uint32_t index) -> RFile {
         std::cerr << "START: " << path << std::endl;
         auto infile = IO::File(path, IO::READ);
-        auto rfile = RMAN::File{};
+        auto rfile = RFile{};
         rfile.size = infile.size();
         rfile.langs = "none";
         rfile.path = fs::relative(fs::absolute(path), fs::absolute(cli.rootfolder)).generic_string();

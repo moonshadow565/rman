@@ -8,6 +8,8 @@
 #include <iomanip>
 #include <iostream>
 
+#include "buffer.hpp"
+
 using namespace rlib;
 
 void rlib::throw_error(std::string_view from, char const* msg) {
@@ -62,7 +64,7 @@ auto rlib::progress_bar::render() const noexcept -> void {
 auto rlib::progress_bar::update(std::uint64_t done) noexcept -> void {
     done_ = done;
     auto percent = std::exchange(percent_, done_ * 100 / total_);
-    if (!disabled_ && percent != percent_) {
+    if (!disabled_ && percent > percent_) {
         this->render();
     }
 }
@@ -88,16 +90,13 @@ auto rlib::clean_path(std::string path) noexcept -> std::string {
 }
 
 auto rlib::zstd_decompress(std::span<char const> src, std::size_t count) -> std::span<char const> {
-    thread_local static std::vector<char> buffer = {};
+    thread_local static Buffer buffer = {};
     std::size_t size_decompressed = rlib_assert_zstd(ZSTD_findDecompressedSize(src.data(), src.size()));
     rlib_assert(size_decompressed == count);
-    if (buffer.size() < count) {
-        buffer.clear();
-        buffer.resize(count);
-    }
+    rlib_assert(buffer.resize_destroy(count));
     std::size_t result = rlib_assert_zstd(ZSTD_decompress(buffer.data(), count, src.data(), src.size()));
     rlib_assert(result == size_decompressed);
-    return {buffer.data(), count};
+    return buffer;
 }
 
 auto rlib::zstd_frame_decompress_size(std::span<char const> src) -> std::size_t {

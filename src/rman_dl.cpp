@@ -3,7 +3,7 @@
 #include <rlib/common.hpp>
 #include <rlib/iofile.hpp>
 #include <rlib/rcdn.hpp>
-#include <rlib/rmanifest.hpp>
+#include <rlib/rfile.hpp>
 
 using namespace rlib;
 
@@ -14,7 +14,7 @@ struct Main {
         bool no_verify = {};
         bool no_write = {};
         bool no_progress = {};
-        RMAN::Filter filter = {};
+        RFile::Match match = {};
         RCache::Options cache = {};
         RCDN::Options cdn = {};
     } cli = {};
@@ -116,8 +116,8 @@ struct Main {
         cli.no_verify = program.get<bool>("--no-verify");
         cli.no_write = program.get<bool>("--no-write");
         cli.no_progress = program.get<bool>("--no-progress");
-        cli.filter.langs = program.get<std::optional<std::regex>>("--filter-lang");
-        cli.filter.path = program.get<std::optional<std::regex>>("--filter-path");
+        cli.match.langs = program.get<std::optional<std::regex>>("--filter-lang");
+        cli.match.path = program.get<std::optional<std::regex>>("--filter-path");
 
         cli.cache = {
             .path = program.get<std::string>("--cache"),
@@ -142,29 +142,39 @@ struct Main {
 
     auto run() -> void {
         rlib_trace("Manifest file: %s", cli.manifest.c_str());
-        auto manifest = RMAN::read_file(cli.manifest, cli.filter);
+        auto files = std::vector<RFile>{};
+
+        auto bundle_status = RFile::read_file(cli.manifest, [&, this](RFile& rfile) {
+            if (cli.match(rfile)) {
+                files.emplace_back(std::move(rfile));
+            }
+            return true;
+        });
+
+        if (bundle_status != RFile::KNOWN_BUNDLE) {
+            cli.cdn.url.clear();
+        }
+
+        if (cli.cdn.url.empty()) {
+            cli.cache.readonly = true;
+        }
 
         if (!cli.no_write) {
             fs::create_directories(cli.output);
         }
 
         if (!cli.cache.path.empty()) {
-            if (cli.cdn.url.empty() || manifest.manifestId == ManifestID::None) {
-                cli.cache.readonly = true;
-            }
             cache = std::make_unique<RCache>(cli.cache);
         }
 
-        if (!cli.cdn.url.empty() && manifest.manifestId != ManifestID::None) {
-            cdn = std::make_unique<RCDN>(cli.cdn, cache.get());
-        }
+        cdn = std::make_unique<RCDN>(cli.cdn, cache.get());
 
-        for (std::uint32_t index = manifest.files.size(); auto const& rfile : manifest.files) {
+        for (std::uint32_t index = files.size(); auto const& rfile : files) {
             download_file(rfile, index--);
         }
     }
 
-    auto download_file(RMAN::File const& rfile, std::uint32_t index) -> void {
+    auto download_file(RFile const& rfile, std::uint32_t index) -> void {
         std::cout << "START: " << rfile.path << std::endl;
         auto path = fs::path(cli.output) / rfile.path;
         rlib_trace("Path: %s", path.generic_string().c_str());
@@ -185,17 +195,6 @@ struct Main {
         if (!cli.no_write) {
             outfile = IO::File(path, IO::WRITE);
             rlib_assert(outfile.resize(0, rfile.size));
-        }
-
-        if (!bad_chunks.empty() && cache) {
-            progress_bar p("UNCACHED", cli.no_progress, index, done, rfile.size);
-            bad_chunks = cache->get(std::move(bad_chunks), [&](RChunk::Dst const& chunk, std::span<char const> data) {
-                if (outfile.fd()) {
-                    rlib_assert(outfile.write(chunk.uncompressed_offset, data));
-                }
-                done += chunk.uncompressed_size;
-                p.update(done);
-            });
         }
 
         if (!bad_chunks.empty() && cdn) {

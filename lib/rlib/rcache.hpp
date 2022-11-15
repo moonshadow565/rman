@@ -3,6 +3,7 @@
 #include <span>
 #include <vector>
 
+#include "buffer.hpp"
 #include "common.hpp"
 #include "iofile.hpp"
 #include "rbundle.hpp"
@@ -26,11 +27,9 @@ namespace rlib {
 
         auto contains(ChunkID chunkId) const noexcept -> bool;
 
-        auto find(ChunkID chunkId) const noexcept -> RChunk::Src;
-
         auto get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb read) const -> std::vector<RChunk::Dst>;
 
-        auto flush() -> bool;
+        auto get_into(RChunk const& chunk, std::span<char> dst) const noexcept -> bool;
 
         auto can_write() const noexcept -> bool { return can_write_; }
 
@@ -39,7 +38,7 @@ namespace rlib {
             std::size_t toc_offset;
             std::size_t end_offset;
             std::vector<RChunk> chunks;
-            std::vector<char> buffer;
+            Buffer buffer;
         };
         bool can_write_ = {};
         Options options_ = {};
@@ -48,5 +47,11 @@ namespace rlib {
         std::unordered_map<ChunkID, RChunk::Src> lookup_ = {};
 
         auto check_space(std::size_t extra) -> bool;
+
+        auto find_internal(ChunkID chunkId) const noexcept -> RChunk::Src const*;
+
+        auto get_internal(RChunk::Src const& chunk) const -> std::span<char const>;
+
+        auto flush_internal() -> bool;
     };
 }

@@ -1,11 +1,13 @@
 #include "rcdn.hpp"
 
 #include <curl/curl.h>
+#include <zstd.h>
 
 #include <cstdlib>
 #include <cstring>
 #include <map>
 
+#include "buffer.hpp"
 #include "common.hpp"
 
 using namespace rlib;
@@ -15,31 +17,29 @@ struct CurlInit {
     ~CurlInit() noexcept { curl_global_cleanup(); }
 };
 
-struct RCDN::Worker {
-    Worker(Options const& options, RCache* cache_out) {
-        handle_ = curl_easy_init();
-        url_ = options.url;
-        cache_out_ = cache_out;
+struct RCDN::Worker final {
+    Worker(RCDN const* cdn) : cdn_(cdn), handle_(curl_easy_init()) {
+        auto& options = cdn_->options_;
         rlib_assert(handle_);
-        rlib_assert(curl_easy_setopt(handle_, CURLOPT_PRIVATE, (char*)this) == CURLE_OK);
-        rlib_assert(curl_easy_setopt(handle_, CURLOPT_VERBOSE, (options.verbose ? 1L : 0L)) == CURLE_OK);
-        rlib_assert(curl_easy_setopt(handle_, CURLOPT_NOPROGRESS, 1L) == CURLE_OK);
-        rlib_assert(curl_easy_setopt(handle_, CURLOPT_WRITEFUNCTION, &recv_data) == CURLE_OK);
-        rlib_assert(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this) == CURLE_OK);
+        rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_PRIVATE, (char*)this));
+        rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_VERBOSE, (options.verbose ? 1L : 0L)));
+        rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_NOPROGRESS, 1L));
+        rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_WRITEFUNCTION, &recv_data));
+        rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
         if (options.buffer) {
-            rlib_assert(curl_easy_setopt(handle_, CURLOPT_BUFFERSIZE, options.buffer) == CURLE_OK);
+            rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_BUFFERSIZE, options.buffer));
         }
         if (!options.proxy.empty()) {
-            rlib_assert(curl_easy_setopt(handle_, CURLOPT_PROXY, options.proxy.c_str()) == CURLE_OK);
+            rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_PROXY, options.proxy.c_str()));
         }
         if (!options.useragent.empty()) {
-            rlib_assert(curl_easy_setopt(handle_, CURLOPT_USERAGENT, options.useragent.c_str()) == CURLE_OK);
+            rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_USERAGENT, options.useragent.c_str()));
         }
         if (options.cookiefile != "-") {
-            rlib_assert(curl_easy_setopt(handle_, CURLOPT_COOKIEFILE, options.cookiefile.c_str()) == CURLE_OK);
+            rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_COOKIEFILE, options.cookiefile.c_str()));
         }
         if (!options.cookielist.empty()) {
-            rlib_assert(curl_easy_setopt(handle_, CURLOPT_COOKIELIST, options.cookielist.c_str()) == CURLE_OK);
+            rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_COOKIELIST, options.cookielist.c_str()));
         }
     }
 
@@ -54,9 +54,9 @@ struct RCDN::Worker {
         auto const& front = chunks.front();
         auto const& back = chunks.back();
         auto range = fmt::format("{}-{}", front.compressed_offset, back.compressed_offset + back.compressed_size - 1);
-        auto url = fmt::format("{}/bundles/{}.bundle", url_, front.bundleId);
-        rlib_assert(curl_easy_setopt(handle_, CURLOPT_URL, url.c_str()) == CURLE_OK);
-        rlib_assert(curl_easy_setopt(handle_, CURLOPT_RANGE, range.c_str()) == CURLE_OK);
+        auto url = fmt::format("{}/bundles/{}.bundle", cdn_->options_.url, front.bundleId);
+        rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_URL, url.c_str()));
+        rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_RANGE, range.c_str()));
         buffer_.clear();
         chunks_ = chunks;
         on_data_ = on_data;
@@ -73,12 +73,11 @@ struct RCDN::Worker {
     }
 
 private:
+    RCDN const* cdn_;
     void* handle_;
-    std::string url_;
-    std::vector<char> buffer_;
+    Buffer buffer_;
     std::span<RChunk::Dst const> chunks_;
     RChunk::Dst::data_cb on_data_;
-    RCache* cache_out_;
 
     auto recieve(std::span<char const> recv) -> bool {
         while (!recv.empty()) {
@@ -93,14 +92,18 @@ private:
                 recv = recv.subspan(chunk.compressed_size);
             } else if (buffer_.size() + recv.size() >= chunk.compressed_size) {
                 auto nsize = chunk.compressed_size - buffer_.size();
-                buffer_.insert(buffer_.end(), recv.data(), recv.data() + nsize);
+                if (!buffer_.append(recv.subspan(0, nsize))) {
+                    return false;
+                }
                 if (!decompress(chunk, buffer_)) {
                     return false;
                 }
                 buffer_.clear();
                 recv = recv.subspan(nsize);
             } else {
-                buffer_.insert(buffer_.end(), recv.data(), recv.data() + recv.size());
+                if (!buffer_.append(recv)) {
+                    return false;
+                }
                 recv = recv.subspan(recv.size());
             }
         }
@@ -108,28 +111,17 @@ private:
     }
 
     auto decompress(RChunk::Dst const& chunk, std::span<char const> src) -> bool {
-        src = src.subspan(0, chunk.compressed_size);
-        //        if (src.size() < 5 || std::memcmp(src.data(), "\x28\xB5\x2F\xFD", 4) != 0) {
-        //            return false;
-        //        }
         rlib_trace("BundleID: %016llx, ChunkID: %016llx\n", chunk.bundleId, chunk.chunkId);
+        src = src.subspan(0, chunk.compressed_size);
         auto dst = zstd_decompress(src, chunk.uncompressed_size);
-        rlib_assert(chunk.hash(dst, chunk.hash_type) == chunk.chunkId);
-        if (cache_out_) {
-            cache_out_->add(chunk, src);
+        if (cdn_->cache_ && cdn_->cache_->can_write()) {
+            cdn_->cache_->add(chunk, src);
         }
         while (!chunks_.empty() && chunks_.front().chunkId == chunk.chunkId) {
             on_data_(chunks_.front(), dst);
             chunks_ = chunks_.subspan(1);
         }
         return true;
-    }
-
-    static auto recv_data(char const* data, size_t size, size_t ncount, Worker* self) noexcept -> size_t {
-        if (self->recieve({data, size * ncount})) {
-            return size * ncount;
-        }
-        return 0;
     }
 
     static auto find_chunks(std::span<RChunk::Dst const> chunks) noexcept -> std::span<RChunk::Dst const> {
@@ -150,16 +142,17 @@ private:
         }
         return chunks.subspan(0, i);
     }
+
+    static auto recv_data(char const* data, size_t size, size_t ncount, Worker* self) noexcept -> size_t {
+        if (self->recieve({data, size * ncount})) {
+            return size * ncount;
+        }
+        return 0;
+    }
 };
 
-RCDN::RCDN(Options const& options, RCache* cache_out)
-    : options_(options), cache_out_(cache_out && cache_out->can_write() ? cache_out : nullptr) {
+RCDN::RCDN(Options const& options, RCache* cache) : options_(options), cache_(cache), handle_(nullptr) {
     static auto init = CurlInit{};
-    handle_ = curl_multi_init();
-    rlib_assert(handle_);
-    for (std::uint32_t i = std::clamp(options_.workers, 1u, 64u); i; --i) {
-        workers_.push_back(std::make_unique<Worker>(options, cache_out_));
-    }
 }
 
 RCDN::~RCDN() noexcept {
@@ -169,6 +162,25 @@ RCDN::~RCDN() noexcept {
 }
 
 auto RCDN::get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) -> std::vector<RChunk::Dst> {
+    if (cache_) {
+        chunks = cache_->get(std::move(chunks), on_data);
+        if (chunks.empty()) {
+            return std::move(chunks);
+        }
+    }
+
+    if (options_.url.empty()) {
+        return std::move(chunks);
+    }
+
+    if (!handle_) {
+        handle_ = curl_multi_init();
+        rlib_assert(handle_);
+        for (std::uint32_t i = std::clamp(options_.workers, 1u, 64u); i; --i) {
+            workers_.push_back(std::make_unique<Worker>(this));
+        }
+    }
+
     for (std::uint32_t retry = options_.retry; !chunks.empty() && retry; --retry) {
         sort_by<&RChunk::Dst::bundleId, &RChunk::Dst::compressed_offset, &RChunk::Dst::uncompressed_offset>(
             chunks.begin(),
@@ -189,7 +201,7 @@ auto RCDN::get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) ->
                 auto handle = worker->start(chunks_queue, on_data);
                 workers_free.pop_back();
                 ++workers_running;
-                rlib_assert(curl_multi_add_handle(handle_, handle) == CURLM_OK);
+                rlib_assert_multi_curl(curl_multi_add_handle(handle_, handle));
             }
 
             // Return if we ended.
@@ -200,7 +212,7 @@ auto RCDN::get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) ->
             // Perform any actual work.
             // NOTE: i do not trust still_running out variable, do our own bookkeeping instead.
             int still_running = 0;
-            rlib_assert(curl_multi_perform(handle_, &still_running) == CURLM_OK);
+            rlib_assert_multi_curl(curl_multi_perform(handle_, &still_running));
 
             // Process messages.
             for (int msg_left = 0; auto msg = curl_multi_info_read(handle_, &msg_left);) {
@@ -213,11 +225,11 @@ auto RCDN::get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) ->
                 auto handle = worker->finish(chunks_failed);
                 workers_free.push_back(worker);
                 --workers_running;
-                rlib_assert(curl_multi_remove_handle(handle_, handle) == CURLM_OK);
+                rlib_assert_multi_curl(curl_multi_remove_handle(handle_, handle));
             }
 
             // Block untill end.
-            rlib_assert(curl_multi_wait(handle_, nullptr, 0, options_.interval, nullptr) == CURLM_OK);
+            rlib_assert_multi_curl(curl_multi_wait(handle_, nullptr, 0, options_.interval, nullptr));
         }
 
         chunks = std::move(chunks_failed);

@@ -5,6 +5,7 @@
 #include <cstring>
 #include <stdexcept>
 
+#include "buffer.hpp"
 #include "common.hpp"
 
 using namespace rlib;
@@ -46,13 +47,10 @@ auto IO::File::reserve(std::size_t offset, std::size_t count) noexcept -> bool {
 }
 
 auto IO::File::copy(std::size_t offset, std::size_t count) const -> std::span<char const> {
-    thread_local auto result = std::vector<char>();
-    if (result.size() < count) {
-        result.clear();
-        result.resize(count);
-    }
-    rlib_assert(this->read(offset, {result.data(), count}));
-    return {result.data(), count};
+    thread_local Buffer buffer = {};
+    rlib_assert(buffer.resize_destroy(count));
+    rlib_assert(this->read(offset, buffer));
+    return buffer;
 }
 
 #ifdef _WIN32

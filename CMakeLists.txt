@@ -18,6 +18,8 @@ add_library(rlib STATIC
     lib/rlib/ar_wad.cpp
     lib/rlib/ar_wpk.cpp
     lib/rlib/ar_zip.cpp
+    lib/rlib/buffer.hpp
+    lib/rlib/buffer.cpp
     lib/rlib/common.hpp
     lib/rlib/common.cpp
     lib/rlib/iofile.cpp
@@ -34,6 +36,10 @@ add_library(rlib STATIC
     lib/rlib/rcdn.cpp
     lib/rlib/rchunk.hpp
     lib/rlib/rchunk.cpp
+    lib/rlib/rfile.hpp
+    lib/rlib/rfile.cpp
+    lib/rlib/rdir.hpp
+    lib/rlib/rdir.cpp
     lib/rlib/rmanifest.cpp
     lib/rlib/rmanifest.hpp
 )
@@ -52,6 +58,10 @@ target_link_libraries(rman-bl PRIVATE rlib)
 
 add_executable(rman-make src/rman_make.cpp)
 target_link_libraries(rman-make PRIVATE rlib)
+
+add_executable(rman-mount src/rman_mount.cpp)
+target_link_libraries(rman-mount PRIVATE rlib)
+target_link_libraries(rman-mount PRIVATE fuse3)
 
 add_executable(rman-rads src/rman_rads.cpp)
 target_link_libraries(rman-rads PRIVATE rlib)

@@ -34,9 +34,9 @@ namespace rlib {
 
     private:
         struct Worker;
-        void* handle_;
         Options options_;
-        RCache* cache_out_;
-        std::vector<std::unique_ptr<Worker>> workers_;
+        RCache* cache_;
+        mutable void* handle_;
+        mutable std::vector<std::unique_ptr<Worker>> workers_;
     };
 }

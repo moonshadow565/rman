@@ -6,7 +6,7 @@
 #include <rlib/common.hpp>
 #include <rlib/iofile.hpp>
 #include <rlib/rcache.hpp>
-#include <rlib/rmanifest.hpp>
+#include <rlib/rfile.hpp>
 
 using namespace rlib;
 
@@ -32,26 +32,22 @@ struct Main {
         auto inbundle = RCache({.path = cli.inbundle, .readonly = true});
 
         rlib_trace("Manifest file: %s", cli.inmanifest.c_str());
-        std::cerr << "Reading input manifest ... " << std::endl;
-        auto manifest = RMAN::read_file(cli.inmanifest);
-
         std::cerr << "Processing files..." << std::endl;
-        auto count = manifest.files.size();
-        for (auto const& file : manifest.files) {
-            std::cout << "Processing #" << count << ": " << file.path << std::endl;
-            verify_file_fast(file, inbundle);
-            --count;
-        }
+        RFile::read_file(cli.inmanifest, [&, this](RFile& rfile) -> bool {
+            std::cout << "Processing: " << rfile.path << std::endl;
+            return verify_file_fast(rfile, inbundle);
+        });
     }
 
-    auto verify_file_fast(RMAN::File const& file, RCache const& provider) const -> void {
+    auto verify_file_fast(RFile const& file, RCache const& provider) const -> bool {
         for (auto const& chunk : file.chunks) {
             if (!provider.contains(chunk.chunkId)) {
                 std::cout << fmt::format("Error: missing chunk: {}", chunk.chunkId) << std::endl;
-                return;
+                return false;
             }
         }
         std::cout << "OK!" << std::endl;
+        return true;
     }
 };
 

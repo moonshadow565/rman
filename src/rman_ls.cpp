@@ -2,7 +2,7 @@
 #include <iostream>
 #include <rlib/common.hpp>
 #include <rlib/iofile.hpp>
-#include <rlib/rmanifest.hpp>
+#include <rlib/rfile.hpp>
 
 using namespace rlib;
 
@@ -10,7 +10,7 @@ struct Main {
     struct CLI {
         std::string manifest = {};
         std::string format = {};
-        RMAN::Filter filter = {};
+        RFile::Match match = {};
     } cli = {};
 
     auto parse_args(int argc, char** argv) -> void {
@@ -47,24 +47,25 @@ struct Main {
 
         cli.format = program.get<std::string>("--format");
 
-        cli.filter.langs = program.get<std::optional<std::regex>>("--filter-lang");
-        cli.filter.path = program.get<std::optional<std::regex>>("--filter-path");
+        cli.match.langs = program.get<std::optional<std::regex>>("--filter-lang");
+        cli.match.path = program.get<std::optional<std::regex>>("--filter-path");
 
         cli.manifest = program.get<std::string>("manifest");
     }
 
     auto run() -> void {
         rlib_trace("Manifest file: %s", cli.manifest.c_str());
-        auto manifest = RMAN::read_file(cli.manifest, cli.filter);
-
-        for (auto const& rfile : manifest.files) {
-            fmt::dynamic_format_arg_store<fmt::format_context> store{};
-            store.push_back(fmt::arg("path", rfile.path));
-            store.push_back(fmt::arg("size", rfile.size));
-            store.push_back(fmt::arg("fileId", rfile.fileId));
-            store.push_back(fmt::arg("langs", rfile.langs));
-            std::cout << fmt::vformat(cli.format, store) << std::endl;
-        }
+        RFile::read_file(cli.manifest, [&, this](RFile const& rfile) {
+            if (cli.match(rfile)) {
+                fmt::dynamic_format_arg_store<fmt::format_context> store{};
+                store.push_back(fmt::arg("path", rfile.path));
+                store.push_back(fmt::arg("size", rfile.size));
+                store.push_back(fmt::arg("fileId", rfile.fileId));
+                store.push_back(fmt::arg("langs", rfile.langs));
+                std::cout << fmt::vformat(cli.format, store) << std::endl;
+            }
+            return true;
+        });
     }
 };
 

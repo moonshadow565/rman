@@ -8,9 +8,11 @@
 #include <rlib/rads_rls.hpp>
 #include <rlib/rads_sln.hpp>
 #include <rlib/rcache.hpp>
-#include <rlib/rmanifest.hpp>
+#include <rlib/rfile.hpp>
 
 using namespace rlib;
+
+constexpr auto RE_FLAGS = std::regex::optimize | std::regex::icase | std::regex::basic;
 
 struct Main {
     struct CLI {
@@ -18,7 +20,7 @@ struct Main {
         std::string inbundle = {};
         std::string inmanifest = {};
         std::string inrelease = {};
-        bool no_progress = {};
+        bool append = {};
     } cli = {};
 
     auto parse_args(int argc, char** argv) -> void {
@@ -27,62 +29,87 @@ struct Main {
         program.add_argument("outmanifest").help("Manifest to write into.").required();
         program.add_argument("inmanifest").help("Manifest to read from.").required();
         program.add_argument("inbundle").help("Source bundle to read from.").required();
-        program.add_argument("inrelease").help("Project or solution path inside bundle.").required();
+        program.add_argument("inrelease")
+            .help("Project or solution path inside bundle. If bundle is empty treat it as regex instead.")
+            .default_value(std::string{});
+
+        program.add_argument("--append")
+            .help("Append manifest instead of overwriting.")
+            .default_value(false)
+            .implicit_value(true);
+
         program.parse_args(argc, argv);
 
         cli.outmanifest = program.get<std::string>("outmanifest");
         cli.inbundle = program.get<std::string>("inbundle");
         cli.inmanifest = program.get<std::string>("inmanifest");
         cli.inrelease = program.get<std::string>("inrelease");
+        cli.append = program.get<bool>("--append");
+        if (cli.inrelease.empty()) {
+            std::swap(cli.inbundle, cli.inrelease);
+        }
     }
 
     auto run() -> void {
-        std::cerr << "Processing input bundle ... " << std::endl;
-        auto inbundle = RCache({.path = cli.inbundle, .readonly = true});
+        if (cli.inbundle.empty() || cli.inrelease.ends_with('/')) {
+            run_without_bundle();
+        } else {
+            run_with_bundle();
+        }
+    }
 
-        rlib_trace("Manifest file: %s", cli.inmanifest.c_str());
+    auto run_without_bundle() const -> void {
+        std::cerr << "Create output manifest ..." << std::endl;
+        auto writer = RFile::writer(cli.outmanifest, cli.append);
+
         std::cerr << "Reading input manifest ... " << std::endl;
-        auto manifest = RMAN::read_file(cli.inmanifest, make_realm_filter());
-
-        std::cerr << "Indexing input manifest ... " << std::endl;
-        auto lookup = manifest.lookup();
-
-        std::cerr << "Create output manifest..." << std::endl;
-        auto outfile = IO::File(cli.outmanifest, IO::WRITE);
-        outfile.resize(0, 0);
-        outfile.write(0, {"JRMAN\n", 6});
-
-        std::cerr << "Processing release..." << std::endl;
-        process(cli.inrelease, lookup, inbundle, [&](RMAN::File&& file) {
-            auto outjson = file.dump();
-            outfile.write(outfile.size(), outjson);
+        RFile::read_file(cli.inmanifest, [&, this](RFile& rfile) {
+            if (rfile.path.starts_with(cli.inrelease)) {
+                rfile.path = rfile.path.substr(cli.inrelease.size());
+                writer(std::move(rfile));
+            }
+            return true;
         });
     }
 
-    auto make_realm_filter() const noexcept -> RMAN::Filter {
-        constexpr auto RE_FLAGS = std::regex::optimize | std::regex::icase | std::regex::basic;
-        if (cli.inrelease.ends_with('/')) {
-            return RMAN::Filter{
-                .path = std::regex{cli.inrelease + ".*", RE_FLAGS},
-            };
+    auto run_with_bundle() const -> void {
+        auto prefix = std::string{};
+        if (auto i = cli.inrelease.find("projects/"); i != std::string::npos) {
+            prefix = cli.inrelease.substr(0, i);
+        } else if (auto i = cli.inrelease.find("solutions/"); i != std::string::npos) {
+            prefix = cli.inrelease.substr(0, i);
         }
-        if (auto [realm, rest] = str_split(cli.inrelease, "projects/"); !realm.empty() && !rest.empty()) {
-            return RMAN::Filter{
-                .path = std::regex{std::string(realm) + ".*", RE_FLAGS},
-            };
+
+        std::cerr << "Reading input manifest ... " << std::endl;
+        auto lookup = std::unordered_map<std::string, RFile>{};
+        RFile::read_file(cli.inmanifest, [&, this](RFile& rfile) {
+            if (rfile.path.starts_with(prefix)) {
+                auto name = rfile.path;
+                std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+                lookup[name] = std::move(rfile);
+            }
+            return true;
+        });
+
+        std::cerr << "Processing input bundle ... " << std::endl;
+        auto provider = RCache({.path = cli.inbundle, .readonly = true});
+
+        std::cerr << "Create output manifest ..." << std::endl;
+        auto writer = RFile::writer(cli.outmanifest, cli.append);
+
+        if (cli.inrelease.ends_with("/releasemanifest")) {
+            return process_rls(cli.inrelease, lookup, provider, writer);
         }
-        if (auto [realm, rest] = str_split(cli.inrelease, "solutions/"); !realm.empty() && !rest.empty()) {
-            return RMAN::Filter{
-                .path = std::regex{std::string(realm) + ".*", RE_FLAGS},
-            };
+
+        if (cli.inrelease.ends_with("/solutionmanifest")) {
+            return process_sln(cli.inrelease, lookup, provider, writer);
         }
-        return {};
     }
 
-    auto find_file(std::string path, auto const& lookup) const noexcept -> RMAN::File const* {
+    auto find_file(std::string path, auto const& lookup) const noexcept -> RFile const* {
         std::transform(path.begin(), path.end(), path.begin(), ::tolower);
         if (auto i = lookup.find(path); i != lookup.end()) {
-            return i->second;
+            return &i->second;
         }
         return nullptr;
     }
@@ -98,25 +125,12 @@ struct Main {
         return result;
     }
 
-    auto process(auto const& path, auto const& lookup, auto const& provider, auto&& cb) const -> void {
-        if (path.ends_with("/")) {
-            return process_manual(path, lookup, cb);
-        }
-        if (path.find("projects/") != std::string::npos) {
-            return process_rls(path, lookup, provider, cb);
-        }
-        if (path.find("solutions/") != std::string::npos) {
-            return process_sln(path, lookup, provider, cb);
-        }
-        rlib_assert(!"inversion must contain projects/ or solutions/");
-    }
-
     auto process_file(auto const& path, auto const& lookup, auto const& provider, auto&& cb) const -> void {
         try {
             rlib_trace("path: %s", path.c_str());
             auto file = find_file(path, lookup);
             rlib_assert(file);
-            cb(RMAN::File(*file));
+            cb(RFile(*file));
         } catch (std::exception const& e) {
             std::cout << e.what() << std::endl;
             for (auto const& error : error_stack()) {
@@ -138,7 +152,7 @@ struct Main {
                 process_file(fmt::format("{}projects/{}/releases/{}/files/{}", realm, rls.name, f.version, f.name),
                              lookup,
                              provider,
-                             [&](RMAN::File&& rfile) {
+                             [&](RFile&& rfile) {
                                  rfile.path = f.name;
                                  cb(std::move(rfile));
                              });
@@ -164,7 +178,7 @@ struct Main {
                 process_rls(fmt::format("{}projects/{}/releases/{}/releasemanifest", realm, rls.name, rls.version),
                             lookup,
                             provider,
-                            [&](RMAN::File&& rfile) {
+                            [&](RFile&& rfile) {
                                 rfile.langs = rls.langs;
                                 cb(std::move(rfile));
                             });
@@ -175,19 +189,6 @@ struct Main {
                 std::cout << error << std::endl;
             }
             error_stack().clear();
-        }
-    }
-
-    auto process_manual(auto path, auto const& lookup, auto&& cb) const -> void {
-        rlib_trace("path: %s", path.c_str());
-        std::transform(path.begin(), path.end(), path.begin(), ::tolower);
-        for (auto const& [name, file] : lookup) {
-            if (!name.starts_with(path)) {
-                continue;
-            }
-            auto rfile = RMAN::File(*file);
-            rfile.path = rfile.path.substr(path.size());
-            cb(std::move(rfile));
         }
     }
 };

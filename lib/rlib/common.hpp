@@ -58,6 +58,20 @@
         }                                                                          \
     }()
 
+#define rlib_assert_easy_curl(...)                                        \
+    do {                                                                  \
+        if (auto result = __VA_ARGS__; result != CURLE_OK) [[unlikely]] { \
+            throw_error(__PRETTY_FUNCTION__, curl_easy_strerror(result)); \
+        }                                                                 \
+    } while (false)
+
+#define rlib_assert_multi_curl(...)                                        \
+    do {                                                                   \
+        if (auto result = __VA_ARGS__; result != CURLM_OK) [[unlikely]] {  \
+            throw_error(__PRETTY_FUNCTION__, curl_multi_strerror(result)); \
+        }                                                                  \
+    } while (false)
+
 namespace rlib {
     static std::size_t KiB = 1024;
     static std::size_t MiB = KiB * 1024;
@@ -175,6 +189,24 @@ namespace rlib {
         while (str.empty() && ::isspace(str.back())) str.remove_suffix(1);
         return str;
     }
+
+    constexpr auto str_lt_ci = [](std::string_view l, std::string_view r) noexcept -> bool {
+        static constexpr auto lower = [](std::uint8_t c) noexcept -> std::uint8_t {
+            return (c >= 'A' && c <= 'Z') ? ((c - 'A') + 'a') : c;
+        };
+        return std::lexicographical_compare(&l[0], &l[l.size()], &r[0], &r[r.size()], [](auto l, auto r) {
+            return lower(l) < lower(r);
+        });
+    };
+
+    constexpr auto str_eq_ci = [](std::string_view l, std::string_view r) noexcept -> bool {
+        static constexpr auto lower = [](std::uint8_t c) noexcept -> std::uint8_t {
+            return (c >= 'A' && c <= 'Z') ? ((c - 'A') + 'a') : c;
+        };
+        return l.size() == r.size() && std::equal(&l[0], &l[l.size()], &r[0], &r[r.size()], [](auto l, auto r) {
+                   return lower(l) == lower(r);
+               });
+    };
 
     template <typename Signature>
     struct function_ref;
