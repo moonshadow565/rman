@@ -7,6 +7,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_subdirectory(dep)
 
+if (WIN32)
+    add_library(fuse3 SHARED IMPORTED)
+    set_target_properties(fuse3 PROPERTIES IMPORTED_LOCATION "C:/Program\ Files\ (x86)/WinFsp/bin/winfsp-x64.dll")
+    set_target_properties(fuse3 PROPERTIES IMPORTED_IMPLIB "C:/Program\ Files\ (x86)/WinFsp/lib/winfsp-x64.lib")
+    include_directories("C:/Program Files (x86)/WinFsp/inc")
+endif()
+
 add_library(rlib STATIC
     lib/rlib/ar.hpp
     lib/rlib/ar.cpp
@@ -45,6 +52,7 @@ add_library(rlib STATIC
 )
 target_include_directories(rlib PUBLIC lib/)
 target_link_libraries(rlib PUBLIC argparse libcurl zstd fmt)
+target_link_libraries(rlib PUBLIC argparse zstd fmt)
 target_link_libraries(rlib PRIVATE json_struct digestpp miniz)
 
 add_executable(rman-dl src/rman_dl.cpp)
@@ -60,8 +68,7 @@ add_executable(rman-make src/rman_make.cpp)
 target_link_libraries(rman-make PRIVATE rlib)
 
 add_executable(rman-mount src/rman_mount.cpp)
-target_link_libraries(rman-mount PRIVATE rlib)
-target_link_libraries(rman-mount PRIVATE fuse3)
+target_link_libraries(rman-mount PRIVATE rlib fuse3)
 
 add_executable(rman-rads src/rman_rads.cpp)
 target_link_libraries(rman-rads PRIVATE rlib)
@@ -83,4 +90,3 @@ target_link_libraries(rbun-merge PRIVATE rlib)
 
 add_executable(rbun-usage src/rbun_usage.cpp)
 target_link_libraries(rbun-usage PRIVATE rlib)
-

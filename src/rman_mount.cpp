@@ -1,6 +1,8 @@
 #define FUSE_USE_VERSION 31
+#include <errno.h>
 #include <fuse3/fuse.h>
 #include <fuse3/fuse_common.h>
+#include <sys/stat.h>
 
 #include <argparse.hpp>
 #include <cinttypes>
@@ -11,6 +13,17 @@
 #include <rlib/rcache.hpp>
 #include <rlib/rdir.hpp>
 #include <rlib/rfile.hpp>
+
+#ifdef _WIN32
+#    define O_RDONLY 0
+#    define O_WRONLY 1
+#    define O_RDWR 2
+#    define O_ACCMODE (O_RDONLY | O_WRONLY | O_RDWR)
+#    define stat fuse_stat
+#    define off_t fuse_off_t
+#else
+#    include <fcntl.h>
+#endif
 
 using namespace rlib;
 
@@ -151,7 +164,6 @@ static int impl_opendir(const char *cpath, struct fuse_file_info *fi) {
     if (!entry->is_dir()) {
         return -ENOTDIR;
     }
-    fi->cache_readdir = 1;
     fi->fh = (std::uintptr_t)(void const *)entry;
     return 0;
 }
@@ -193,7 +205,7 @@ static int impl_open(const char *cpath, struct fuse_file_info *fi) {
         return -EISDIR;
     }
     if ((fi->flags & O_ACCMODE) != O_RDONLY) {
-        return -EACCES;
+        return -EROFS;
     }
     fi->keep_cache = 1;
     fi->fh = (std::uintptr_t)(void const *)entry;
@@ -205,7 +217,7 @@ static int impl_read(const char *cpath, char *buf, size_t size, off_t offset, st
     if (!entry) {
         return -ENOENT;
     }
-    if (!entry->is_dir()) {
+    if (entry->is_dir()) {
         return -EISDIR;
     }
     if (!main_.cache) {

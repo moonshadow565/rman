@@ -7,12 +7,15 @@ jobs:
   build:
     runs-on: windows-2022
     steps:
+    - name: "Instal WinFSP"
+      run: |
+        choco install winfsp -y --force --params "ALLUSERS=1"
+    - name: "Setup msvc"
+      uses: ilammy/msvc-dev-cmd@v1
     - name: "Clone source"
       uses: actions/checkout@v2
       with:
         submodules: 'true'
-    - name: "Setup msvc"
-      uses: ilammy/msvc-dev-cmd@v1
     - name: "Build"
       run: |
         mkdir build
