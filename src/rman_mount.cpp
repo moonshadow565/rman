@@ -239,22 +239,29 @@ static int impl_read(const char *cpath, char *buf, size_t size, off_t offset, st
         if (fuse_interrupted()) {
             return -EINTR;
         }
-        if (chunk.uncompressed_offset == offset + done && size - done >= chunk.uncompressed_size) {
-            if (!main_.cache->get_into(chunk, {buf + done, chunk.uncompressed_size})) {
-                return -EIO;
+        try {
+            if (chunk.uncompressed_offset == offset + done && size - done >= chunk.uncompressed_size) {
+                if (!main_.cache->get_into(chunk, {buf + done, chunk.uncompressed_size})) {
+                    return -EIO;
+                }
+                done += chunk.uncompressed_size;
+                continue;
             }
-            done += chunk.uncompressed_size;
-            continue;
-        }
-        if (last.id != chunk.chunkId) {
-            last.id = ChunkID::None;
-            if (!last.buffer.resize_destroy(chunk.uncompressed_size)) {
-                return -ENOMEM;
+            if (last.id != chunk.chunkId) {
+                last.id = ChunkID::None;
+                rlib_assert(last.buffer.resize_destroy(chunk.uncompressed_size));
+                if (!main_.cache->get_into(chunk, last.buffer)) {
+                    return -EIO;
+                }
+                last.id = chunk.chunkId;
             }
-            if (!main_.cache->get_into(chunk, last.buffer)) {
-                return -EIO;
+        } catch (std::exception const &e) {
+            std::cerr << e.what() << std::endl;
+            for (auto const &error : error_stack()) {
+                std::cerr << error << std::endl;
             }
-            last.id = chunk.chunkId;
+            error_stack().clear();
+            return -EIO;
         }
         auto src = std::span<char const>(last.buffer);
         if (auto const pos = (offset + done); pos > chunk.uncompressed_offset) {

@@ -24,8 +24,7 @@ RCache::RCache(Options const& options) : options_(options) {
         options_.flush_size = std::max(1 * MiB, options_.flush_size);
         options_.max_size = std::max(options_.flush_size * 2, options_.max_size) - options_.flush_size;
     }
-    rlib_assert(fs::exists(options.path));
-    if (fs::is_directory(options.path)) {
+    if (fs::exists(options.path) && fs::is_directory(options.path)) {
         this->load_folder_internal();
     } else {
         this->load_file_internal();
@@ -104,7 +103,9 @@ auto RCache::get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) 
 auto RCache::get_into(RChunk const& chunk, std::span<char> dst) const -> bool {
     if (auto c = this->find_internal(chunk.chunkId); c && c->uncompressed_size == chunk.uncompressed_size) {
         auto src = get_internal(*c);
-        return ZSTD_decompress(dst.data(), dst.size(), src.data(), src.size()) == chunk.uncompressed_size;
+        auto result = rlib_assert_zstd(ZSTD_decompress(dst.data(), dst.size(), src.data(), src.size()));
+        rlib_assert(result == chunk.uncompressed_size);
+        return true;
     }
     return false;
 }
@@ -121,22 +122,18 @@ auto RCache::find_internal(ChunkID chunkId) const noexcept -> RChunk::Src const*
 }
 
 auto RCache::get_internal(RChunk::Src const& chunk) const -> std::span<char const> {
+    rlib_trace("bundleId: {}, chunkId: {}", chunk.bundleId, chunk.chunkId);
     if (files_.empty()) {
         thread_local struct Lazy {
             BundleID bundleId;
             std::unique_ptr<IO::MMap> io;
         } lazy;
-        if (chunk.bundleId == BundleID::None) {
-            return {};
-        }
+        rlib_assert(chunk.bundleId != BundleID::None);
         if (lazy.bundleId != chunk.bundleId) {
             auto path = fmt::format("{}/{}.bundle", options_.path, chunk.bundleId);
             lazy.bundleId = BundleID::None;
             lazy.io = std::make_unique<IO::MMap>(path, IO::READ);
             lazy.bundleId = chunk.bundleId;
-        }
-        if (!in_range(chunk.compressed_offset, chunk.compressed_size, lazy.io->size())) [[unlikely]] {
-            return {};
         }
         return lazy.io->copy(chunk.compressed_offset, chunk.compressed_size);
     }
