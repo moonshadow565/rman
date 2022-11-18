@@ -29,7 +29,7 @@ namespace rlib {
 
         auto get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb read) const -> std::vector<RChunk::Dst>;
 
-        auto get_into(RChunk const& chunk, std::span<char> dst) const noexcept -> bool;
+        auto get_into(RChunk const& chunk, std::span<char> dst) const -> bool;
 
         auto can_write() const noexcept -> bool { return can_write_; }
 

@@ -101,7 +101,7 @@ auto RCache::get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) 
     return std::move(chunks);
 }
 
-auto RCache::get_into(RChunk const& chunk, std::span<char> dst) const noexcept -> bool {
+auto RCache::get_into(RChunk const& chunk, std::span<char> dst) const -> bool {
     if (auto c = this->find_internal(chunk.chunkId); c && c->uncompressed_size == chunk.uncompressed_size) {
         auto src = get_internal(*c);
         return ZSTD_decompress(dst.data(), dst.size(), src.data(), src.size()) == chunk.uncompressed_size;
@@ -126,10 +126,13 @@ auto RCache::get_internal(RChunk::Src const& chunk) const -> std::span<char cons
             BundleID bundleId;
             std::unique_ptr<IO::MMap> io;
         } lazy;
-        rlib_assert(lazy.bundleId != BundleID::None);
+        if (chunk.bundleId == BundleID::None) {
+            return {};
+        }
         if (lazy.bundleId != chunk.bundleId) {
+            auto path = fmt::format("{}/{}.bundle", options_.path, chunk.bundleId);
             lazy.bundleId = BundleID::None;
-            lazy.io = std::make_unique<IO::MMap>(fmt::format("{}/{}.bundle", options_.path, chunk.bundleId), IO::READ);
+            lazy.io = std::make_unique<IO::MMap>(path, IO::READ);
             lazy.bundleId = chunk.bundleId;
         }
         if (!in_range(chunk.compressed_offset, chunk.compressed_size, lazy.io->size())) [[unlikely]] {
@@ -245,6 +248,9 @@ auto RCache::load_folder_internal() -> void {
         auto file = IO::File(path, IO::READ);
         auto bundle = RBUN::read(file);
         rlib_assert(bundle.bundleId == (BundleID)bundleId);
+        for (auto& [key, value] : bundle.lookup) {
+            value.bundleId = bundle.bundleId;
+        }
         lookup_.merge(std::move(bundle.lookup));
     }
 }
