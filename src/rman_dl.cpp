@@ -79,6 +79,14 @@ struct Main {
         program.add_argument("--cdn")
             .help("Source url to download files from.")
             .default_value(std::string("http://lol.secure.dyn.riotcdn.net/channels/public"));
+        program.add_argument("--cdn-lowspeed-time")
+            .help("Curl seconds that the transfer speed should be below.")
+            .default_value(std::size_t{0})
+            .action([](std::string const& value) -> std::size_t { return (std::size_t)std::stoul(value); });
+        program.add_argument("--cdn-lowspeed-limit")
+            .help("Curl average transfer speed in killobytes per second that the transfer should be above.")
+            .default_value(std::size_t{64})
+            .action([](std::string const& value) -> std::size_t { return (std::size_t)std::stoul(value); });
         program.add_argument("--cdn-retry")
             .help("Number of retries to download from url.")
             .default_value(std::uint32_t{3})
@@ -137,6 +145,8 @@ struct Main {
             .useragent = program.get<std::string>("--cdn-useragent"),
             .cookiefile = program.get<std::string>("--cdn-cookiefile"),
             .cookielist = program.get<std::string>("--cdn-cookielist"),
+            .low_speed_limit = program.get<std::size_t>("--cdn-lowspeed-limit") * KiB,
+            .low_speed_time = program.get<std::size_t>("--cdn-lowspeed-time"),
         };
     }
 

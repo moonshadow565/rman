@@ -11,6 +11,7 @@
 #include <rlib/common.hpp>
 #include <rlib/iofile.hpp>
 #include <rlib/rcache.hpp>
+#include <rlib/rcdn.hpp>
 #include <rlib/rdir.hpp>
 #include <rlib/rfile.hpp>
 
@@ -31,11 +32,14 @@ struct Main {
     struct CLI {
         std::string output = {};
         RCache::Options cache = {};
+        RCDN::Options cdn = {};
         std::vector<std::string> manifests = {};
         RFile::Match match = {};
+        bool with_prefix = {};
     } cli = {};
     fuse_args fargs = {};
     std::unique_ptr<RCache> cache = {};
+    std::unique_ptr<RCDN> cdn = {};
     std::unique_ptr<RDirEntry> root = {};
 
     auto parse_args(int argc, char **argv) -> void {
@@ -44,10 +48,14 @@ struct Main {
 
         // Common options
         program.add_argument("output").help("output directory to mount in.").required();
-        program.add_argument("bundle").help("bundle file path.").default_value(std::string{""});
         program.add_argument("manifests").help("Manifest files to read from.").remaining().required();
 
         program.add_argument("--fuse-debug").help("FUSE debug").default_value(false).implicit_value(true);
+
+        program.add_argument("--with-prefix")
+            .help("Prefix file paths with manifest name")
+            .default_value(false)
+            .implicit_value(true);
 
         // Filter options
         program.add_argument("-l", "--filter-lang")
@@ -71,16 +79,75 @@ struct Main {
                 }
             });
 
+        // Cache options
+        program.add_argument("--cache").help("Cache file path.").default_value(std::string{""});
+        program.add_argument("--cache-readonly")
+            .help("Do not write to cache.")
+            .default_value(false)
+            .implicit_value(true);
+        program.add_argument("--cache-buffer")
+            .help("Size for cache buffer in megabytes [1, 4096]")
+            .default_value(std::uint32_t{32})
+            .action([](std::string const &value) -> std::uint32_t {
+                return std::clamp((std::uint32_t)std::stoul(value), 1u, 4096u);
+            });
+        program.add_argument("--cache-limit")
+            .help("Size for cache bundle limit in gigabytes [0, 4096]")
+            .default_value(std::uint32_t{4})
+            .action([](std::string const &value) -> std::uint32_t {
+                return std::clamp((std::uint32_t)std::stoul(value), 0u, 4096u);
+            });
+
+        // CDN options
+        program.add_argument("--cdn")
+            .help("Source url to download files from.")
+            .default_value(std::string("http://lol.secure.dyn.riotcdn.net/channels/public"));
+        program.add_argument("--cdn-lowspeed-time")
+            .help("Curl seconds that the transfer speed should be below.")
+            .default_value(std::size_t{0})
+            .action([](std::string const &value) -> std::size_t { return (std::size_t)std::stoul(value); });
+        program.add_argument("--cdn-lowspeed-limit")
+            .help("Curl average transfer speed in killobytes per second that the transfer should be above.")
+            .default_value(std::size_t{64})
+            .action([](std::string const &value) -> std::size_t { return (std::size_t)std::stoul(value); });
+        program.add_argument("--cdn-verbose").help("Curl: verbose logging.").default_value(false).implicit_value(true);
+        program.add_argument("--cdn-buffer")
+            .help("Curl buffer size in killobytes [1, 512].")
+            .default_value(long{512})
+            .action(
+                [](std::string const &value) -> long { return std::clamp((long)std::stoul(value), 1l, 512l) * 1024; });
+        program.add_argument("--cdn-proxy").help("Curl: proxy.").default_value(std::string{});
+        program.add_argument("--cdn-useragent").help("Curl: user agent string.").default_value(std::string{});
+        program.add_argument("--cdn-cookiefile")
+            .help("Curl cookie file or '-' to disable cookie engine.")
+            .default_value(std::string{});
+        program.add_argument("--cdn-cookielist").help("Curl: cookie list string.").default_value(std::string{});
+
         program.parse_args(argc, argv);
 
         cli.output = program.get<std::string>("output");
         cli.manifests = program.get<std::vector<std::string>>("manifests");
         cli.match.langs = program.get<std::optional<std::regex>>("--filter-lang");
         cli.match.path = program.get<std::optional<std::regex>>("--filter-path");
+        cli.with_prefix = program.get<bool>("--with-prefix");
 
         cli.cache = {
-            .path = program.get<std::string>("bundle"),
-            .readonly = true,
+            .path = program.get<std::string>("--cache"),
+            .readonly = program.get<bool>("--cache-readonly"),
+            .flush_size = program.get<std::uint32_t>("--cache-buffer") * MiB,
+            .max_size = program.get<std::uint32_t>("--cache-limit") * GiB,
+        };
+
+        cli.cdn = {
+            .url = clean_path(program.get<std::string>("--cdn")),
+            .verbose = program.get<bool>("--cdn-verbose"),
+            .buffer = program.get<long>("--cdn-buffer"),
+            .proxy = program.get<std::string>("--cdn-proxy"),
+            .useragent = program.get<std::string>("--cdn-useragent"),
+            .cookiefile = program.get<std::string>("--cdn-cookiefile"),
+            .cookielist = program.get<std::string>("--cdn-cookielist"),
+            .low_speed_limit = program.get<std::size_t>("--cdn-lowspeed-limit") * KiB,
+            .low_speed_time = program.get<std::size_t>("--cdn-lowspeed-time"),
         };
 
         [this](auto... args) mutable {
@@ -106,19 +173,33 @@ struct Main {
         std::cerr << "Parsing input manifests ... " << std::endl;
         auto builder = root->builder();
         for (auto const &p : paths) {
-            RFile::read_file(p, [&, this](RFile &rfile) {
+            auto name = p.filename().replace_extension("").generic_string();
+            name.push_back('/');
+            auto bundle_status = RFile::read_file(p, [&, this](RFile &rfile) {
+                if (this->cli.with_prefix) {
+                    rfile.path.insert(rfile.path.begin(), name.begin(), name.end());
+                }
                 if (cli.match(rfile)) {
                     builder(rfile);
                 }
                 return true;
             });
+            if (bundle_status != RFile::KNOWN_BUNDLE) {
+                cli.cdn.url.clear();
+            }
         }
         builder = nullptr;
+
+        if (cli.cdn.url.empty()) {
+            cli.cache.readonly = true;
+        }
 
         if (!cli.cache.path.empty()) {
             std::cerr << "Parsing bundle ... " << std::endl;
             cache = std::make_unique<RCache>(cli.cache);
         }
+
+        cdn = std::make_unique<RCDN>(cli.cdn, cache.get());
 
         std::cerr << "Mounted!" << std::endl;
     }
@@ -220,9 +301,6 @@ static int impl_read(const char *cpath, char *buf, size_t size, off_t offset, st
     if (entry->is_dir()) {
         return -EISDIR;
     }
-    if (!main_.cache) {
-        return -EIO;
-    }
     auto real_size = entry->size();
     if (offset >= real_size) {
         return 0;
@@ -241,16 +319,18 @@ static int impl_read(const char *cpath, char *buf, size_t size, off_t offset, st
         }
         try {
             if (chunk.uncompressed_offset == offset + done && size - done >= chunk.uncompressed_size) {
-                if (!main_.cache->get_into(chunk, {buf + done, chunk.uncompressed_size})) {
+                fflush(stdout);
+                if (!main_.cdn->get_into(chunk, {buf + done, chunk.uncompressed_size})) {
                     return -EIO;
                 }
                 done += chunk.uncompressed_size;
                 continue;
             }
             if (last.id != chunk.chunkId) {
+                fflush(stdout);
                 last.id = ChunkID::None;
                 rlib_assert(last.buffer.resize_destroy(chunk.uncompressed_size));
-                if (!main_.cache->get_into(chunk, last.buffer)) {
+                if (!main_.cdn->get_into(chunk, last.buffer)) {
                     return -EIO;
                 }
                 last.id = chunk.chunkId;
@@ -261,7 +341,7 @@ static int impl_read(const char *cpath, char *buf, size_t size, off_t offset, st
                 std::cerr << error << std::endl;
             }
             error_stack().clear();
-            return -EIO;
+            return -EAGAIN;
         }
         auto src = std::span<char const>(last.buffer);
         if (auto const pos = (offset + done); pos > chunk.uncompressed_offset) {

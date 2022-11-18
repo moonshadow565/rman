@@ -28,11 +28,11 @@
 
 #define rlib_error(msg) ::rlib::throw_error(__PRETTY_FUNCTION__, msg)
 
-#define rlib_assert(...)                                                 \
-    do {                                                                 \
-        if (!(__VA_ARGS__)) [[unlikely]] {                               \
-            ::rlib::throw_error(__PRETTY_FUNCTION__, ": " #__VA_ARGS__); \
-        }                                                                \
+#define rlib_assert(...)                                            \
+    do {                                                            \
+        if (!(__VA_ARGS__)) [[unlikely]] {                          \
+            ::rlib::throw_error(__PRETTY_FUNCTION__, #__VA_ARGS__); \
+        }                                                           \
     } while (false)
 
 #define rlib_rethrow(...)                                 \
@@ -40,7 +40,7 @@
         try {                                             \
             return __VA_ARGS__;                           \
         } catch (std::exception const&) {                 \
-            ::rlib::throw_error(func, ": " #__VA_ARGS__); \
+            ::rlib::throw_error(func, #__VA_ARGS__);      \
         }                                                 \
     }()
 

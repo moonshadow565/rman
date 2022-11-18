@@ -391,7 +391,7 @@ auto IO::MMap::reserve(std::size_t offset, std::size_t count) noexcept -> bool {
 }
 
 auto IO::MMap::read(std::size_t offset, std::span<char> dst) const noexcept -> bool {
-    if (in_range(offset, dst.size(), impl_.size)) {
+    if (!in_range(offset, dst.size(), impl_.size)) {
         return false;
     }
     std::memcpy(dst.data(), (char const*)impl_.data + offset, dst.size());

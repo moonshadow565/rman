@@ -26,6 +26,7 @@ struct RCDN::Worker final {
         rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_NOPROGRESS, 1L));
         rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_WRITEFUNCTION, &recv_data));
         rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_WRITEDATA, this));
+        rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_NOSIGNAL, 1));
         if (options.buffer) {
             rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_BUFFERSIZE, options.buffer));
         }
@@ -40,6 +41,12 @@ struct RCDN::Worker final {
         }
         if (!options.cookielist.empty()) {
             rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_COOKIELIST, options.cookielist.c_str()));
+        }
+        if (options.low_speed_limit) {
+            rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_LOW_SPEED_LIMIT, options.low_speed_limit));
+        }
+        if (options.low_speed_time) {
+            rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_LOW_SPEED_TIME, options.low_speed_time));
         }
     }
 
@@ -60,6 +67,7 @@ struct RCDN::Worker final {
         buffer_.clear();
         chunks_ = chunks;
         on_data_ = on_data;
+        error_.clear();
         chunks_queue = chunks_queue.subspan(chunks.size());
         return handle_;
     }
@@ -72,12 +80,36 @@ struct RCDN::Worker final {
         return handle_;
     }
 
+    auto get_into(RChunk::Src const& chunk, std::span<char> dst) -> bool {
+        auto range = fmt::format("{}-{}", chunk.compressed_offset, chunk.compressed_offset + chunk.compressed_size - 1);
+        auto url = fmt::format("{}/bundles/{}.bundle", cdn_->options_.url, chunk.bundleId);
+        rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_URL, url.c_str()));
+        rlib_assert_easy_curl(curl_easy_setopt(handle_, CURLOPT_RANGE, range.c_str()));
+        buffer_.clear();
+        RChunk::Dst dummy_chunks[1] = {{chunk}};
+        chunks_ = dummy_chunks;
+        auto dumm_cb = [dst](RChunk::Dst const& chunk, std::span<char const> src) {
+            std::memcpy(dst.data(), src.data(), src.size());
+        };
+        on_data_ = dumm_cb;
+        error_.clear();
+        auto result = curl_easy_perform(handle_) == CURLE_OK;
+        buffer_.clear();
+        chunks_ = {};
+        on_data_ = {};
+        if (!error_.empty()) {
+            throw std::runtime_error(this->error_);
+        }
+        return result && chunks_.empty();
+    }
+
 private:
     RCDN const* cdn_;
     void* handle_;
     Buffer buffer_;
     std::span<RChunk::Dst const> chunks_;
     RChunk::Dst::data_cb on_data_;
+    std::string error_;
 
     auto recieve(std::span<char const> recv) -> bool {
         while (!recv.empty()) {
@@ -86,18 +118,12 @@ private:
             }
             auto chunk = chunks_.front();
             if (buffer_.empty() && recv.size() >= chunk.compressed_size) {
-                if (!decompress(chunk, recv)) {
-                    return false;
-                }
+                decompress(chunk, recv);
                 recv = recv.subspan(chunk.compressed_size);
             } else if (buffer_.size() + recv.size() >= chunk.compressed_size) {
                 auto nsize = chunk.compressed_size - buffer_.size();
-                if (!buffer_.append(recv.subspan(0, nsize))) {
-                    return false;
-                }
-                if (!decompress(chunk, buffer_)) {
-                    return false;
-                }
+                rlib_assert(buffer_.append(recv.subspan(0, nsize)));
+                decompress(chunk, buffer_);
                 buffer_.clear();
                 recv = recv.subspan(nsize);
             } else {
@@ -111,8 +137,9 @@ private:
     }
 
     auto decompress(RChunk::Dst const& chunk, std::span<char const> src) -> bool {
-        rlib_trace("BundleID: %016llx, ChunkID: %016llx\n", chunk.bundleId, chunk.chunkId);
         src = src.subspan(0, chunk.compressed_size);
+        auto compressed_size = rlib_assert_zstd(ZSTD_findFrameCompressedSize(src.data(), src.size()));
+        rlib_assert(compressed_size == chunk.compressed_size);
         auto dst = zstd_decompress(src, chunk.uncompressed_size);
         if (cdn_->cache_ && cdn_->cache_->can_write()) {
             cdn_->cache_->add(chunk, src);
@@ -144,8 +171,15 @@ private:
     }
 
     static auto recv_data(char const* data, size_t size, size_t ncount, Worker* self) noexcept -> size_t {
-        if (self->recieve({data, size * ncount})) {
-            return size * ncount;
+        if (!self->error_.empty()) {
+            return 0;
+        }
+        try {
+            if (self->recieve({data, size * ncount})) {
+                return size * ncount;
+            }
+        } catch (std::exception const& error) {
+            self->error_ = error.what();
         }
         return 0;
     }
@@ -235,4 +269,32 @@ auto RCDN::get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) ->
         chunks = std::move(chunks_failed);
     }
     return chunks;
+}
+
+auto RCDN::get_into(RChunk::Src const& src, std::span<char> dst) -> bool {
+    // FIXME: we are only allowed one RCDN per whole program
+    thread_local std::unique_ptr<Worker> one_ = {};
+    try {
+        if (cache_ && cache_->get_into(src, dst)) {
+            return true;
+        }
+    } catch (std::exception const& error) {
+        if (!options_.url.empty()) {
+            if (!one_) {
+                one_ = std::make_unique<Worker>(this);
+            }
+            // If we can fetch the chunk again, ignore exceptions
+            if (one_->get_into(src, dst)) {
+                return true;
+            }
+        }
+        throw;
+    }
+    if (options_.url.empty()) {
+        return false;
+    }
+    if (!one_) {
+        one_ = std::make_unique<Worker>(this);
+    }
+    return one_->get_into(src, dst);
 }

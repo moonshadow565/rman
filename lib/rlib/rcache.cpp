@@ -26,8 +26,10 @@ RCache::RCache(Options const& options) : options_(options) {
     }
     if (fs::exists(options.path) && fs::is_directory(options.path)) {
         this->load_folder_internal();
+    } else if (options_.readonly) {
+        this->load_file_internal_read_only();
     } else {
-        this->load_file_internal();
+        this->load_file_internal_read_write();
     }
 }
 
@@ -38,24 +40,18 @@ auto RCache::add(RChunk const& chunk, std::span<char const> data) -> bool {
         return false;
     }
     rlib_assert(chunk.compressed_size == data.size());
+    std::lock_guard lock(this->mutex_);
     if (lookup_.contains(chunk.chunkId)) {
         return false;
     }
-    // check if we hit chunk limit
-    auto const extra_data = sizeof(RChunk) + data.size();
-    this->check_space(extra_data);
-    writer_.chunks.push_back(chunk);
-    lookup_[chunk.chunkId] = {chunk, BundleID::None, writer_.buffer.size() + writer_.toc_offset};
-    rlib_assert(writer_.buffer.append(data));
-    if (writer_.buffer.size() > options_.flush_size) {
-        this->flush_internal();
-    }
-    writer_.end_offset += extra_data;
+    this->add_internal(chunk, data);
     return true;
 }
 
 auto RCache::add_uncompressed(std::span<char const> src, int level, HashType hash_type) -> RChunk::Src {
+    rlib_assert(can_write());
     auto id = RChunk::hash(src, hash_type);
+    std::lock_guard lock(this->mutex_);
     if (auto c = this->find_internal(id)) {
         rlib_assert(c->uncompressed_size == src.size());
         return *c;
@@ -67,13 +63,17 @@ auto RCache::add_uncompressed(std::span<char const> src, int level, HashType has
     chunk.chunkId = id;
     chunk.uncompressed_size = src.size();
     chunk.compressed_size = (std::uint32_t)size;
-    rlib_assert(this->add(chunk, buffer.subspan(0, size)));
+    this->add_internal(chunk, buffer.subspan(0, size));
     return chunk;
 }
 
-auto RCache::contains(ChunkID chunkId) const noexcept -> bool { return lookup_.contains(chunkId); }
+auto RCache::contains(ChunkID chunkId) const noexcept -> bool {
+    std::shared_lock lock(this->mutex_);
+    return lookup_.contains(chunkId);
+}
 
 auto RCache::get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) const -> std::vector<RChunk::Dst> {
+    std::shared_lock lock(this->mutex_);
     auto f = chunks.end();
     auto const e = chunks.end();
     for (auto i = chunks.begin(); i != f;) {
@@ -101,7 +101,9 @@ auto RCache::get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) 
 }
 
 auto RCache::get_into(RChunk const& chunk, std::span<char> dst) const -> bool {
-    if (auto c = this->find_internal(chunk.chunkId); c && c->uncompressed_size == chunk.uncompressed_size) {
+    std::shared_lock lock(this->mutex_);
+    if (auto c = this->find_internal(chunk.chunkId); c) {
+        rlib_assert(c->uncompressed_size == chunk.uncompressed_size);
         auto src = get_internal(*c);
         auto result = rlib_assert_zstd(ZSTD_decompress(dst.data(), dst.size(), src.data(), src.size()));
         rlib_assert(result == chunk.uncompressed_size);
@@ -122,12 +124,12 @@ auto RCache::find_internal(ChunkID chunkId) const noexcept -> RChunk::Src const*
 }
 
 auto RCache::get_internal(RChunk::Src const& chunk) const -> std::span<char const> {
-    rlib_trace("bundleId: {}, chunkId: {}", chunk.bundleId, chunk.chunkId);
     if (files_.empty()) {
+        fflush(stdout);
         thread_local struct Lazy {
-            BundleID bundleId;
-            std::unique_ptr<IO::MMap> io;
-        } lazy;
+            BundleID bundleId = {};
+            std::unique_ptr<IO::MMap> io = {};
+        } lazy = {};
         rlib_assert(chunk.bundleId != BundleID::None);
         if (lazy.bundleId != chunk.bundleId) {
             auto path = fmt::format("{}/{}.bundle", options_.path, chunk.bundleId);
@@ -137,7 +139,9 @@ auto RCache::get_internal(RChunk::Src const& chunk) const -> std::span<char cons
         }
         return lazy.io->copy(chunk.compressed_offset, chunk.compressed_size);
     }
-    auto const& file = files_.at((std::size_t)chunk.bundleId);
+    auto const index = (std::size_t)chunk.bundleId;
+    rlib_assert(index < files_.size());
+    auto const& file = files_.at(index);
     if (can_write() && &file == &files_.back() && chunk.compressed_offset >= writer_.toc_offset) {
         return writer_.buffer.subspan(chunk.compressed_offset - writer_.toc_offset, chunk.compressed_size);
     } else {
@@ -145,28 +149,32 @@ auto RCache::get_internal(RChunk::Src const& chunk) const -> std::span<char cons
     }
 }
 
-auto RCache::check_space(std::size_t extra) -> bool {
-    // ensure we can allways at least write one file
-    if (writer_.end_offset <= sizeof(RBUN::Footer)) {
-        return false;
+auto RCache::add_internal(RChunk const& chunk, std::span<char const> data) -> void {
+    // Space we will be adding this write
+    auto const extra_data = sizeof(RChunk) + data.size();
+    // only move to next bundle when we wrote at least one chunk and we run out of space
+    if (writer_.chunks.size() && writer_.end_offset + extra_data > options_.max_size) {
+        this->flush_internal();  // flush anything that we have atm
+        auto const index = files_.size();
+        auto const path = rcache_file_path(options_.path, index);
+        auto file = std::make_unique<IO::File>(path, rcache_file_flags(false));
+        file->resize(0, 0);
+        files_.push_back(std::move(file));
+        writer_.toc_offset = 0;
+        writer_.end_offset = sizeof(RBUN::Footer);
+        writer_.chunks.clear();
+        writer_.buffer.clear();
+        this->flush_internal();
     }
-    // still have space
-    if (writer_.end_offset + extra < options_.max_size) {
-        return false;
+    writer_.chunks.push_back(chunk);
+    rlib_assert(writer_.buffer.append(data));
+    lookup_[chunk.chunkId] = {chunk, (BundleID)(files_.size() - 1), writer_.buffer.size() + writer_.toc_offset};
+    auto const buffer_size = writer_.buffer.size();
+    auto const current_toc_size = files_.back()->size() - writer_.toc_offset;
+    if (buffer_size > current_toc_size && buffer_size - current_toc_size > options_.flush_size) {
+        this->flush_internal();
     }
-    this->flush_internal();  // flush anything that we have atm
-    auto const index = files_.size();
-    auto const path = rcache_file_path(options_.path, index);
-    auto const flags = rcache_file_flags(false);
-    auto file = std::make_unique<IO::File>(path, flags);
-    file->resize(0, 0);
-    files_.push_back(std::move(file));
-    writer_.toc_offset = 0;
-    writer_.end_offset = sizeof(RBUN::Footer);
-    writer_.chunks.clear();
-    writer_.buffer.clear();
-    this->flush_internal();
-    return true;
+    writer_.end_offset += extra_data;
 }
 
 auto RCache::flush_internal() -> bool {
@@ -190,44 +198,52 @@ auto RCache::flush_internal() -> bool {
     return true;
 }
 
-auto RCache::load_file_internal() -> void {
-    for (fs::path path = options_.path;;) {
+auto RCache::load_file_internal_read_only() -> void {
+    fs::path path = options_.path;
+    do {
         auto const index = files_.size();
-        auto next_path = rcache_file_path(options_.path, index + 1);
-        auto const next_exists = fs::exists(next_path);
-        auto const flags = rcache_file_flags(options_.readonly || next_exists);
-
-        auto file = std::make_unique<IO::File>(path, flags);
-        auto const is_empty = file->size() == 0;
-        auto bundle = !is_empty ? RBUN::read(*file) : RBUN{};
+        auto file = std::make_unique<IO::MMap>(path, rcache_file_flags(true));
+        auto bundle = RBUN::read(*file);
         files_.push_back(std::move(file));
         for (auto& chunk : bundle.lookup) {
             chunk.second.bundleId = (BundleID)index;
         }
         lookup_.merge(std::move(bundle.lookup));
+        path = rcache_file_path(options_.path, index + 1);
+    } while (fs::exists(path));
+}
 
-        if (flags & IO::WRITE) {
-            writer_ = {
-                .toc_offset = bundle.toc_offset,
-                .end_offset = bundle.toc_offset + sizeof(RBUN::Footer),
-                .chunks = std::move(bundle.chunks),
-            };
-            writer_.end_offset += sizeof(RChunk) * writer_.chunks.size();
+auto RCache::load_file_internal_read_write() -> void {
+    fs::path path = options_.path;
+    do {
+        auto const index = files_.size();
+        auto next_path = rcache_file_path(options_.path, index + 1);
+        if (!fs::exists(path) || (fs::file_size(path) < options_.max_size && !fs::exists(next_path))) {
+            auto file = std::make_unique<IO::File>(path, rcache_file_flags(false));
+            auto size = file->size();
+            auto bundle = size ? RBUN::read(*file) : RBUN{};
+            files_.push_back(std::move(file));
+            for (auto& chunk : bundle.lookup) {
+                chunk.second.bundleId = (BundleID)index;
+            }
+            lookup_.merge(std::move(bundle.lookup));
+            writer_.toc_offset = bundle.toc_offset;
+            writer_.end_offset = size;
+            writer_.chunks = std::move(bundle.chunks);
             writer_.buffer.clear();
             can_write_ = true;
-            if (is_empty) {
-                this->flush_internal();
-            } else {
-                this->check_space(options_.flush_size);
-            }
-        }
-
-        if (!next_exists) {
+            this->flush_internal();
             break;
         }
-
+        auto file = std::make_unique<IO::MMap>(path, rcache_file_flags(true));
+        auto bundle = RBUN::read(*file);
+        files_.push_back(std::move(file));
+        for (auto& chunk : bundle.lookup) {
+            chunk.second.bundleId = (BundleID)index;
+        }
+        lookup_.merge(std::move(bundle.lookup));
         path = std::move(next_path);
-    }
+    } while (true);
 }
 
 auto RCache::load_folder_internal() -> void {

@@ -1,5 +1,6 @@
 #pragma once
 #include <cstddef>
+#include <shared_mutex>
 #include <span>
 #include <vector>
 
@@ -43,14 +44,17 @@ namespace rlib {
         bool can_write_ = {};
         Options options_ = {};
         Writer writer_ = {};
-        std::vector<std::unique_ptr<IO::File>> files_;
+        std::vector<std::unique_ptr<IO>> files_;
         std::unordered_map<ChunkID, RChunk::Src> lookup_ = {};
+        mutable std::shared_mutex mutex_;
 
-        auto load_file_internal() -> void;
+        auto load_file_internal_read_write() -> void;
+
+        auto load_file_internal_read_only() -> void;
 
         auto load_folder_internal() -> void;
 
-        auto check_space(std::size_t extra) -> bool;
+        auto add_internal(RChunk const& chunk, std::span<char const> data) -> void;
 
         auto find_internal(ChunkID chunkId) const noexcept -> RChunk::Src const*;
 

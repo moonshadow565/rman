@@ -15,7 +15,7 @@ using namespace rlib;
 void rlib::throw_error(std::string_view from, char const* msg) {
     // break point goes here
     from = from.substr(0, from.find_first_of("("));
-    throw std::runtime_error(std::string(from) + msg);
+    throw std::runtime_error(fmt::format("{}: {}", from, msg));
 }
 
 error_stack_t& rlib::error_stack() noexcept {
@@ -64,7 +64,7 @@ auto rlib::progress_bar::render() const noexcept -> void {
 auto rlib::progress_bar::update(std::uint64_t done) noexcept -> void {
     done_ = done;
     auto percent = std::exchange(percent_, done_ * 100 / total_);
-    if (!disabled_ && percent > percent_) {
+    if (!disabled_ && percent < percent_) {
         this->render();
     }
 }

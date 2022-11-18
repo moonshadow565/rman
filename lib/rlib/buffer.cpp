@@ -14,7 +14,7 @@ Buffer::~Buffer() noexcept {
 
 auto Buffer::resize_keep(std::size_t size) noexcept -> bool {
     if (size > impl_.capacity) {
-        auto capacity = std::bit_ceil(size);
+        auto capacity = std::max(size, std::bit_ceil(size));
         auto data = (char*)realloc(impl_.data, capacity);
         if (data == nullptr) [[unlikely]] {
             return false;
@@ -28,7 +28,7 @@ auto Buffer::resize_keep(std::size_t size) noexcept -> bool {
 
 auto Buffer::resize_destroy(std::size_t size) noexcept -> bool {
     if (size > impl_.capacity) {
-        auto capacity = std::bit_ceil(size);
+        auto capacity = std::max(size, std::bit_ceil(size));
         auto data = (char*)malloc(capacity);
         if (data == nullptr) [[unlikely]] {
             return false;
