@@ -24,42 +24,11 @@ RCache::RCache(Options const& options) : options_(options) {
         options_.flush_size = std::max(1 * MiB, options_.flush_size);
         options_.max_size = std::max(options_.flush_size * 2, options_.max_size) - options_.flush_size;
     }
-    for (fs::path path = options_.path;;) {
-        auto const index = files_.size();
-        auto next_path = rcache_file_path(options_.path, index + 1);
-        auto const next_exists = fs::exists(next_path);
-        auto const flags = rcache_file_flags(options_.readonly || next_exists);
-
-        auto file = std::make_unique<IO::File>(path, flags);
-        auto const is_empty = file->size() == 0;
-        auto bundle = !is_empty ? RBUN::read(*file) : RBUN{};
-        files_.push_back(std::move(file));
-        for (auto& chunk : bundle.lookup) {
-            chunk.second.bundleId = (BundleID)index;
-        }
-        lookup_.merge(std::move(bundle.lookup));
-
-        if (flags & IO::WRITE) {
-            writer_ = {
-                .toc_offset = bundle.toc_offset,
-                .end_offset = bundle.toc_offset + sizeof(RBUN::Footer),
-                .chunks = std::move(bundle.chunks),
-            };
-            writer_.end_offset += sizeof(RChunk) * writer_.chunks.size();
-            writer_.buffer.clear();
-            can_write_ = true;
-            if (is_empty) {
-                this->flush_internal();
-            } else {
-                this->check_space(options_.flush_size);
-            }
-        }
-
-        if (!next_exists) {
-            break;
-        }
-
-        path = std::move(next_path);
+    rlib_assert(fs::exists(options.path));
+    if (fs::is_directory(options.path)) {
+        this->load_folder_internal();
+    } else {
+        this->load_file_internal();
     }
 }
 
@@ -152,6 +121,22 @@ auto RCache::find_internal(ChunkID chunkId) const noexcept -> RChunk::Src const*
 }
 
 auto RCache::get_internal(RChunk::Src const& chunk) const -> std::span<char const> {
+    if (files_.empty()) {
+        thread_local struct Lazy {
+            BundleID bundleId;
+            std::unique_ptr<IO::MMap> io;
+        } lazy;
+        rlib_assert(lazy.bundleId != BundleID::None);
+        if (lazy.bundleId != chunk.bundleId) {
+            lazy.bundleId = BundleID::None;
+            lazy.io = std::make_unique<IO::MMap>(fmt::format("{}/{}.bundle", options_.path, chunk.bundleId), IO::READ);
+            lazy.bundleId = chunk.bundleId;
+        }
+        if (!in_range(chunk.compressed_offset, chunk.compressed_size, lazy.io->size())) [[unlikely]] {
+            return {};
+        }
+        return lazy.io->copy(chunk.compressed_offset, chunk.compressed_size);
+    }
     auto const& file = files_.at((std::size_t)chunk.bundleId);
     if (can_write() && &file == &files_.back() && chunk.compressed_offset >= writer_.toc_offset) {
         return writer_.buffer.subspan(chunk.compressed_offset - writer_.toc_offset, chunk.compressed_size);
@@ -203,4 +188,63 @@ auto RCache::flush_internal() -> bool {
     writer_.buffer.clear();
     writer_.toc_offset = new_toc_offset;
     return true;
+}
+
+auto RCache::load_file_internal() -> void {
+    for (fs::path path = options_.path;;) {
+        auto const index = files_.size();
+        auto next_path = rcache_file_path(options_.path, index + 1);
+        auto const next_exists = fs::exists(next_path);
+        auto const flags = rcache_file_flags(options_.readonly || next_exists);
+
+        auto file = std::make_unique<IO::File>(path, flags);
+        auto const is_empty = file->size() == 0;
+        auto bundle = !is_empty ? RBUN::read(*file) : RBUN{};
+        files_.push_back(std::move(file));
+        for (auto& chunk : bundle.lookup) {
+            chunk.second.bundleId = (BundleID)index;
+        }
+        lookup_.merge(std::move(bundle.lookup));
+
+        if (flags & IO::WRITE) {
+            writer_ = {
+                .toc_offset = bundle.toc_offset,
+                .end_offset = bundle.toc_offset + sizeof(RBUN::Footer),
+                .chunks = std::move(bundle.chunks),
+            };
+            writer_.end_offset += sizeof(RChunk) * writer_.chunks.size();
+            writer_.buffer.clear();
+            can_write_ = true;
+            if (is_empty) {
+                this->flush_internal();
+            } else {
+                this->check_space(options_.flush_size);
+            }
+        }
+
+        if (!next_exists) {
+            break;
+        }
+
+        path = std::move(next_path);
+    }
+}
+
+auto RCache::load_folder_internal() -> void {
+    options_.readonly = true;
+    for (auto const& entry : fs::directory_iterator(options_.path)) {
+        auto const& path = entry.path();
+        auto filename = path.filename().generic_string();
+        if (!filename.ends_with(".bundle") || filename.find(".bundle") != 16) {
+            continue;
+        }
+        auto bundleId = std::uint64_t{};
+        auto [ptr, ec] = std::from_chars(filename.data(), filename.data() + 16, bundleId, 16);
+        rlib_assert(ptr == filename.data() + 16);
+        rlib_assert(ec == std::errc{});
+        auto file = IO::File(path, IO::READ);
+        auto bundle = RBUN::read(file);
+        rlib_assert(bundle.bundleId == (BundleID)bundleId);
+        lookup_.merge(std::move(bundle.lookup));
+    }
 }

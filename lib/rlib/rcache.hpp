@@ -46,6 +46,10 @@ namespace rlib {
         std::vector<std::unique_ptr<IO::File>> files_;
         std::unordered_map<ChunkID, RChunk::Src> lookup_ = {};
 
+        auto load_file_internal() -> void;
+
+        auto load_folder_internal() -> void;
+
         auto check_space(std::size_t extra) -> bool;
 
         auto find_internal(ChunkID chunkId) const noexcept -> RChunk::Src const*;
