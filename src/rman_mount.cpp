@@ -161,6 +161,10 @@ struct Main {
           "auto_unmount",
           "-o",
           "noforget",
+#ifdef _WIN32
+          "-o",
+          "ThreadCount=16",
+#endif
           cli.output.c_str());
     }
 

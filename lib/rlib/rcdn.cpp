@@ -274,21 +274,8 @@ auto RCDN::get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) ->
 auto RCDN::get_into(RChunk::Src const& src, std::span<char> dst) -> bool {
     // FIXME: we are only allowed one RCDN per whole program
     thread_local std::unique_ptr<Worker> one_ = {};
-    try {
-        if (cache_ && cache_->get_into(src, dst)) {
-            return true;
-        }
-    } catch (std::exception const& error) {
-        if (!options_.url.empty()) {
-            if (!one_) {
-                one_ = std::make_unique<Worker>(this);
-            }
-            // If we can fetch the chunk again, ignore exceptions
-            if (one_->get_into(src, dst)) {
-                return true;
-            }
-        }
-        throw;
+    if (cache_ && cache_->get_into(src, dst)) {
+        return true;
     }
     if (options_.url.empty()) {
         return false;

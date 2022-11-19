@@ -167,8 +167,8 @@ auto RCache::add_internal(RChunk const& chunk, std::span<char const> data) -> vo
         this->flush_internal();
     }
     writer_.chunks.push_back(chunk);
-    rlib_assert(writer_.buffer.append(data));
     lookup_[chunk.chunkId] = {chunk, (BundleID)(files_.size() - 1), writer_.buffer.size() + writer_.toc_offset};
+    rlib_assert(writer_.buffer.append(data));
     auto const buffer_size = writer_.buffer.size();
     auto const current_toc_size = files_.back()->size() - writer_.toc_offset;
     if (buffer_size > current_toc_size && buffer_size - current_toc_size > options_.flush_size) {
