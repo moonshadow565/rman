@@ -300,7 +300,6 @@ private:
             auto permissions = file_table[12].as<std::uint8_t>();
             rlib_trace("File: %016llX(%s)", (unsigned long long)fileId, name.c_str());
             rlib_assert(fileId != FileID::None);
-            rlib_assert(link.empty());
             rlib_assert(!name.empty());
             auto params = rlib_rethrow(lookup_params.at(params_index));
             auto path = name;

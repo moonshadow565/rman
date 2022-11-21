@@ -22,6 +22,7 @@ namespace rlib {
         std::string path;
         std::string link;
         std::string langs;
+        std::uint64_t time;
         std::vector<RChunk::Dst> chunks;
 
         enum BundleStatus : bool {

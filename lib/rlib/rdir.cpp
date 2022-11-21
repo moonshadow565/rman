@@ -20,6 +20,7 @@ auto RDirEntry::builder() -> std::function<bool(RFile& rfile)> {
                 }
                 if (fail_fast || i == cur->children_.end() || !str_eq_ci(name_, *i)) {
                     i = cur->children_.insert(i, RDirEntry{std::string(name_)});
+                    i->time_ = rfile.time;
                     fail_fast = true;
                 }
                 cur = &*i;
@@ -32,6 +33,7 @@ auto RDirEntry::builder() -> std::function<bool(RFile& rfile)> {
                 chunks = std::make_shared<std::vector<RChunk::Dst>>(std::move(rfile.chunks));
             }
             cur->chunks_ = chunks;
+            cur->link_ = rfile.link;
         }
         return true;
     };
@@ -61,11 +63,13 @@ auto RDirEntry::chunks(std::size_t offset, std::size_t size) const noexcept -> s
         return {};
     }
     auto chunks = std::span(*chunks_);
-    while (!chunks.empty() && offset > chunks.front().uncompressed_offset + chunks.front().uncompressed_size) {
-        chunks = chunks.subspan(1);
-    }
-    while (!chunks.empty() && offset + size < chunks.back().uncompressed_offset) {
-        chunks = chunks.subspan(0, chunks.size() - 1);
-    }
-    return chunks;
+    auto start =
+        std::upper_bound(chunks.begin(), chunks.end(), RChunk::Dst{{}, {}, offset}, [](auto const& l, auto const& r) {
+            return l.uncompressed_offset + l.uncompressed_size < r.uncompressed_offset + r.uncompressed_size;
+        });
+    auto stop =
+        std::lower_bound(start, chunks.end(), RChunk::Dst{{}, {}, offset + size}, [](auto const& l, auto const& r) {
+            return l.uncompressed_offset < r.uncompressed_offset;
+        });
+    return std::span(start, stop);
 }

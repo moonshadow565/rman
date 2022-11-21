@@ -5,9 +5,11 @@
 #include <sys/stat.h>
 
 #include <argparse.hpp>
+#include <chrono>
 #include <cinttypes>
 #include <compare>
 #include <cstring>
+#include <ctime>
 #include <rlib/common.hpp>
 #include <rlib/iofile.hpp>
 #include <rlib/rcache.hpp>
@@ -16,6 +18,7 @@
 #include <rlib/rfile.hpp>
 
 #ifdef _WIN32
+#    define S_IFLNK 0120000
 #    define O_RDONLY 0
 #    define O_WRONLY 1
 #    define O_RDWR 2
@@ -177,13 +180,15 @@ struct Main {
         std::cerr << "Parsing input manifests ... " << std::endl;
         auto builder = root->builder();
         for (auto const &p : paths) {
-            auto name = p.filename().replace_extension("").generic_string();
-            name.push_back('/');
+            auto const name = p.filename().replace_extension("").generic_string() + '/';
+            auto const time_file = fs::last_write_time(p).time_since_epoch();
+            auto const time_sec = std::chrono::duration_cast<std::chrono::seconds>(time_file).count();
             auto bundle_status = RFile::read_file(p, [&, this](RFile &rfile) {
                 if (this->cli.with_prefix) {
                     rfile.path.insert(rfile.path.begin(), name.begin(), name.end());
                 }
                 if (cli.match(rfile)) {
+                    rfile.time = time_sec;
                     builder(rfile);
                 }
                 return true;
@@ -213,16 +218,25 @@ static Main main_ = {};
 
 static auto get_stats(RDirEntry const *entry, struct stat *stbuf) {
     memset(stbuf, 0, sizeof(struct stat));
-    stbuf->st_mode = (entry->is_dir() ? S_IFDIR : S_IFREG) | 0444;
+    stbuf->st_mode = 0444;
+    if (entry->is_dir()) {
+        stbuf->st_mode |= S_IFDIR;
+    } else if (entry->is_link()) {
+        stbuf->st_mode |= S_IFLNK;
+    } else {
+        stbuf->st_mode |= S_IFREG;
+    }
     stbuf->st_nlink = entry->nlink();
     stbuf->st_size = entry->size();
+    auto const time_sec = entry->time();
+    stbuf->st_mtim.tv_sec = stbuf->st_ctim.tv_sec = time_sec;
 }
 
 static auto get_entry(const char *cpath, struct fuse_file_info const *fi) -> RDirEntry const * {
     if (fi && fi->fh) {
         return (RDirEntry const *)(void const *)(std::uintptr_t)fi->fh;
     }
-    return main_.root->find(cpath + 1);
+    return cpath ? main_.root->find(cpath + 1) : nullptr;
 }
 
 static void *impl_init(struct fuse_conn_info *conn, struct fuse_config *cfg) {
@@ -232,7 +246,6 @@ static void *impl_init(struct fuse_conn_info *conn, struct fuse_config *cfg) {
 }
 
 static int impl_getattr(const char *cpath, struct stat *stbuf, struct fuse_file_info *fi) {
-    (void)fi;
     auto const entry = get_entry(cpath, fi);
     if (!entry) {
         return -ENOENT;
@@ -250,6 +263,20 @@ static int impl_opendir(const char *cpath, struct fuse_file_info *fi) {
         return -ENOTDIR;
     }
     fi->fh = (std::uintptr_t)(void const *)entry;
+    return 0;
+}
+
+static int impl_readlink(const char *cpath, char *buf, size_t size) {
+    auto const entry = get_entry(cpath, nullptr);
+    if (!entry) {
+        return -ENOENT;
+    }
+    if (!entry->is_link()) {
+        return -EINVAL;
+    }
+    auto n = std::min(entry->link().size() + 1, size);
+    std::memcpy(buf, entry->link().data(), n);
+    buf[n - 1] = '\0';
     return 0;
 }
 
@@ -323,7 +350,6 @@ static int impl_read(const char *cpath, char *buf, size_t size, off_t offset, st
         }
         try {
             if (chunk.uncompressed_offset == offset + done && size - done >= chunk.uncompressed_size) {
-                fflush(stdout);
                 if (!main_.cdn->get_into(chunk, {buf + done, chunk.uncompressed_size})) {
                     return -EIO;
                 }
@@ -368,6 +394,7 @@ static int impl_fsync(const char *, int, struct fuse_file_info *) { return 0; }
 
 static const struct fuse_operations impl_oper = {
     .getattr = impl_getattr,
+    .readlink = impl_readlink,
 
     .open = impl_open,
     .read = impl_read,
