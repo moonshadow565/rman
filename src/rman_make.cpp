@@ -154,7 +154,7 @@ struct Main {
         auto rfile = RFile{};
         rfile.size = infile.size();
         rfile.langs = "none";
-        rfile.path = fs::relative(fs::absolute(path), fs::absolute(cli.rootfolder)).generic_string();
+        rfile.path = fs_relative(path, cli.rootfolder);
         {
             auto p = progress_bar("PROCESSED", cli.no_progress, index, 0, infile.size());
             auto xxstate = XXH64_state_s{};

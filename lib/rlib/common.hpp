@@ -241,4 +241,6 @@ namespace rlib {
     extern auto collect_files(std::vector<std::string> const& inputs,
                               function_ref<bool(fs::path const& path)> filter,
                               bool recursive = false) -> std::vector<fs::path>;
+
+    extern auto fs_relative(fs::path const& target, fs::path const& parent) -> std::string;
 }

@@ -150,3 +150,14 @@ auto rlib::collect_files(std::vector<std::string> const& inputs,
     }
     return paths;
 }
+
+auto rlib::fs_relative(fs::path const& target, fs::path const& parent) -> std::string {
+    auto const target_str = fs::absolute(target).generic_string();
+    auto parent_str = fs::absolute(parent).generic_string();
+    if (!parent_str.ends_with('/')) {
+        parent_str.push_back('/');
+    }
+    rlib_trace("target: %s, parent: %s\n", target_str.c_str(), parent_str.c_str());
+    rlib_assert(target_str.starts_with(parent_str));
+    return target_str.substr(parent_str.size());
+}
