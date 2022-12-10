@@ -344,15 +344,18 @@ static int impl_read(const char *cpath, char *buf, size_t size, off_t offset, st
         Buffer buffer = {};
     } last = {};
     auto done = std::size_t{};
-    for (RChunk::Dst const &chunk : entry->chunks(offset, size)) {
-        if (fuse_interrupted()) {
-            return -EINTR;
-        }
-        try {
+    try {
+        rlib_trace("offset: 0x%llx, size: 0x%llx, done: %llx", offset, size, done);
+        for (RChunk::Dst const &chunk : entry->chunks(offset, size)) {
+            rlib_trace("chunkId: %016llX, offset: 0x%llx, size: 0x%0llx",
+                       chunk.chunkId,
+                       chunk.uncompressed_offset,
+                       chunk.uncompressed_size);
+            if (fuse_interrupted()) {
+                return -EINTR;
+            }
             if (chunk.uncompressed_offset == offset + done && size - done >= chunk.uncompressed_size) {
-                if (!main_.cdn->get_into(chunk, {buf + done, chunk.uncompressed_size})) {
-                    return -EIO;
-                }
+                rlib_assert(main_.cdn->get_into(chunk, {buf + done, chunk.uncompressed_size}));
                 done += chunk.uncompressed_size;
                 continue;
             }
@@ -360,30 +363,29 @@ static int impl_read(const char *cpath, char *buf, size_t size, off_t offset, st
                 fflush(stdout);
                 last.id = ChunkID::None;
                 rlib_assert(last.buffer.resize_destroy(chunk.uncompressed_size));
-                if (!main_.cdn->get_into(chunk, last.buffer)) {
-                    return -EIO;
-                }
+                rlib_assert(main_.cdn->get_into(chunk, last.buffer));
                 last.id = chunk.chunkId;
             }
-        } catch (std::exception const &e) {
-            std::cerr << e.what() << std::endl;
-            for (auto const &error : error_stack()) {
-                std::cerr << error << std::endl;
+            auto src = std::span<char const>(last.buffer);
+            if (auto const pos = (offset + done); pos > chunk.uncompressed_offset) {
+                src = src.subspan(pos - chunk.uncompressed_offset);
             }
-            error_stack().clear();
-            return -EAGAIN;
+            if (auto const remain = size - done; remain < src.size()) {
+                src = src.subspan(0, remain);
+            }
+            std::memcpy(buf + done, src.data(), src.size());
+            done += src.size();
         }
-        auto src = std::span<char const>(last.buffer);
-        if (auto const pos = (offset + done); pos > chunk.uncompressed_offset) {
-            src = src.subspan(pos - chunk.uncompressed_offset);
+        rlib_assert(done == size);
+        return done;
+    } catch (std::exception const &e) {
+        std::cerr << e.what() << std::endl;
+        for (auto const &error : error_stack()) {
+            std::cerr << error << std::endl;
         }
-        if (auto const remain = size - done; remain < src.size()) {
-            src = src.subspan(0, remain);
-        }
-        std::memcpy(buf + done, src.data(), src.size());
-        done += src.size();
+        error_stack().clear();
+        return -EAGAIN;
     }
-    return done;
 }
 
 static int impl_flush(const char *, struct fuse_file_info *) { return 0; }
