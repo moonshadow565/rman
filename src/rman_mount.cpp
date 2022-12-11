@@ -181,8 +181,9 @@ struct Main {
         auto builder = root->builder();
         for (auto const &p : paths) {
             auto const name = p.filename().replace_extension("").generic_string() + '/';
-            auto const time_file = fs::last_write_time(p).time_since_epoch();
-            auto const time_sec = std::chrono::duration_cast<std::chrono::seconds>(time_file).count();
+            auto const time_file = fs::last_write_time(p);
+            auto const time_sys = decltype(time_file)::clock::to_sys(time_file).time_since_epoch();
+            auto const time_sec = std::chrono::duration_cast<std::chrono::seconds>(time_sys).count();
             auto bundle_status = RFile::read_file(p, [&, this](RFile &rfile) {
                 if (this->cli.with_prefix) {
                     rfile.path.insert(rfile.path.begin(), name.begin(), name.end());

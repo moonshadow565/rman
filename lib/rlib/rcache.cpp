@@ -125,7 +125,6 @@ auto RCache::find_internal(ChunkID chunkId) const noexcept -> RChunk::Src const*
 
 auto RCache::get_internal(RChunk::Src const& chunk) const -> std::span<char const> {
     if (files_.empty()) {
-        fflush(stdout);
         thread_local struct Lazy {
             BundleID bundleId = {};
             std::unique_ptr<IO::MMap> io = {};
