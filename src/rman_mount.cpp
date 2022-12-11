@@ -182,7 +182,11 @@ struct Main {
         for (auto const &p : paths) {
             auto const name = p.filename().replace_extension("").generic_string() + '/';
             auto const time_file = fs::last_write_time(p);
+#ifdef _MSC_VER
+            auto const time_sys = decltype(time_file)::clock::to_utc(time_file).time_since_epoch();
+#else
             auto const time_sys = decltype(time_file)::clock::to_sys(time_file).time_since_epoch();
+#endif
             auto const time_sec = std::chrono::duration_cast<std::chrono::seconds>(time_sys).count();
             auto bundle_status = RFile::read_file(p, [&, this](RFile &rfile) {
                 if (this->cli.with_prefix) {
