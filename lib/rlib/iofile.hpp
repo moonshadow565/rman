@@ -15,6 +15,8 @@ namespace rlib {
 
         struct MMap;
 
+        struct Buffer;
+
         struct Reader;
 
         enum Flags : unsigned;
@@ -35,9 +37,27 @@ namespace rlib {
 
         virtual auto read(std::size_t offset, std::span<char> dst) const noexcept -> bool = 0;
 
+        template <typename T>
+            requires(std::is_trivially_copyable_v<T>)
+        auto read_s(std::size_t offset, std::span<T> dst) const noexcept -> bool {
+            return this->read(offset, {(char*)dst.data(), dst.size() * sizeof(T)});
+        }
+
         virtual auto write(std::size_t offset, std::span<char const> src) noexcept -> bool = 0;
 
+        template <typename T>
+            requires(std::is_trivially_copyable_v<T>)
+        auto write_s(std::size_t offset, std::span<T const> src) const noexcept -> bool {
+            return this->write(offset, {(char const*)src.data(), src.size() * sizeof(T)});
+        }
+
         virtual auto copy(std::size_t offset, std::size_t count) const -> std::span<char const> = 0;
+
+        template <typename T>
+            requires(std::is_trivially_copyable_v<T>)
+        auto copy_s(std::size_t offset, std::size_t count) const noexcept -> std::span<T const> {
+            return {(T const*)this->copy(offset, count * sizeof(T)).data(), count};
+        }
 
     private:
         constexpr IO() noexcept = default;

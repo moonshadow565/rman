@@ -180,7 +180,7 @@ Optional arguments:
 --no-ar              	Regex of disable smart chunkers, can be any of: fsb, fsb5, load, mac_exe, mac_fat, pe, wad, wpk, zip [default: ""]
 --no-ar-error        	Do not stop on smart chunking error. [default: false]
 --ar-min             	Smart chunking minimum size in killobytes [1, 4096]. [default: 4]
---chunk-size         	Chunk max size in megabytes [1, 64]. [default: 1]
+--chunk-size         	Chunk max size in killobytes [1, 16384]. [default: 1024]
 --level              	Compression level for zstd. [default: 6]
 --bundle-chunks      	Maximum ammount of chunks to embed in manifest (0 for allways embed). [default: 0]
 --level-high-entropy 	Set compression level for high entropy chunks(0 for no special handling). [default: 0]
@@ -258,5 +258,35 @@ Optional arguments:
 -h --help    	shows help message and exits [default: false]
 -v --version 	prints version information and exits [default: false]
 --append     	Append manifest instead of overwriting. [default: false]
+```
+
+```sh
+Usage: rman-remake [options] outbundle outmanifest inbundle inmanifests 
+
+Remake manifests by rechunking all file data.
+
+Positional arguments:
+outbundle            	Bundle file to write into. [required]
+outmanifest          	Manifest to write into. [required]
+inbundle             	Input bundle to read from [required]
+inmanifests          	Input manifests. [default: {}]
+
+Optional arguments:
+-h --help            	shows help message and exits [default: false]
+-v --version         	prints version information and exits [default: false]
+--resume             	Resume file path used to store processed fileIds. [default: ""]
+--resume-buffer      	Size for resume buffer before flush to disk in kilobytes [1, 16384] [default: 64]
+--append             	Append manifest instead of overwriting. [default: false]
+--no-progress        	Do not print progress. [default: false]
+--no-ar              	Regex of disable smart chunkers, can be any of: fsb, fsb5, load, mac_exe, mac_fat, pe, wad, wpk, zip [default: ""]
+--no-ar-error        	Do not stop on smart chunking error. [default: false]
+--ar-min             	Smart chunking minimum size in killobytes [1, 4096]. [default: 4]
+--chunk-size         	Chunk max size in killobytes [1, 65536]. [default: 1024]
+--level              	Compression level for zstd. [default: 6]
+--bundle-chunks      	Maximum ammount of chunks to embed in manifest (0 for allways embed). [default: 0]
+--level-high-entropy 	Set compression level for high entropy chunks(0 for no special handling). [default: 0]
+--newonly            	Force create new part regardless of size. [default: false]
+--buffer             	Size for buffer before flush to disk in megabytes [1, 4096] [default: 32]
+--limit              	Size for bundle limit in gigabytes [0, 4096] [default: 4096]
 ```
 

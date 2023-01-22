@@ -73,10 +73,10 @@ struct Main {
                 return std::clamp((std::uint32_t)std::stoul(value), 1u, 4096u);
             });
         program.add_argument("--chunk-size")
-            .default_value(std::uint32_t{1})
-            .help("Chunk max size in megabytes [1, 64].")
+            .default_value(std::uint32_t{1024})
+            .help("Chunk max size in killobytes [1, 16384].")
             .action([](std::string const& value) -> std::uint32_t {
-                return std::clamp((std::uint32_t)std::stoul(value), 1u, 64u);
+                return std::clamp((std::uint32_t)std::stoul(value), 1u, 16384u);
             });
         program.add_argument("--level")
             .default_value(std::int32_t{6})
@@ -87,7 +87,7 @@ struct Main {
         program.add_argument("--bundle-chunks")
             .default_value(std::uint32_t{0})
             .help("Maximum ammount of chunks to embed in manifest (0 for allways embed).")
-            .action([](std::string const& value) -> std::int32_t { return (std::uint32_t)std::stoul(value); });
+            .action([](std::string const& value) -> std::uint32_t { return (std::uint32_t)std::stoul(value); });
         program.add_argument("--level-high-entropy")
             .default_value(std::int32_t{0})
             .help("Set compression level for high entropy chunks(0 for no special handling).")
@@ -133,7 +133,7 @@ struct Main {
 
         cli.ar = Ar{
             .chunk_min = program.get<std::uint32_t>("--ar-min") * KiB,
-            .chunk_max = program.get<std::uint32_t>("--chunk-size") * MiB,
+            .chunk_max = program.get<std::uint32_t>("--chunk-size") * KiB,
             .disabled = parse_processors(program.get<std::string>("--no-ar")),
             .no_error = program.get<bool>("--no-ar-error"),
         };

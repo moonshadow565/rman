@@ -79,6 +79,9 @@ target_link_libraries(rman-rads PRIVATE rlib)
 add_executable(rman-chk src/rman_chk.cpp)
 target_link_libraries(rman-chk PRIVATE rlib)
 
+add_executable(rman-remake src/rman_remake.cpp)
+target_link_libraries(rman-remake PRIVATE rlib)
+
 add_executable(rbun-chk src/rbun_chk.cpp)
 target_link_libraries(rbun-chk PRIVATE rlib)
 
