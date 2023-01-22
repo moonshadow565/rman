@@ -5,6 +5,7 @@
 #include <digestpp.hpp>
 
 #include "common.hpp"
+#include "iofile.hpp"
 
 using namespace rlib;
 
@@ -80,4 +81,27 @@ auto RChunk::hash_type(std::span<char const> data, ChunkID chunkId) -> HashType 
     }
 
     return HashType::None;
+}
+
+auto RChunk::Dst::verify(fs::path const& path, std::vector<RChunk::Dst>& chunks, data_cb on_good) -> void {
+    if (!fs::exists(path)) {
+        return;
+    }
+    auto infile = IO::File(path, IO::READ);
+    remove_if(chunks, [&, failfast = false](RChunk::Dst const& chunk) mutable -> bool {
+        if (failfast) {
+            return false;
+        }
+        if (!in_range(chunk.uncompressed_offset, chunk.uncompressed_size, infile.size())) {
+            failfast = true;
+            return false;
+        }
+        auto data = infile.copy(chunk.uncompressed_offset, chunk.uncompressed_size);
+        auto id = RChunk::hash(data, chunk.hash_type);
+        if (id == chunk.chunkId) {
+            on_good(chunk, data);
+            return true;
+        }
+        return false;
+    });
 }

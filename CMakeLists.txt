@@ -67,6 +67,9 @@ target_link_libraries(rman-bl PRIVATE rlib)
 add_executable(rman-make src/rman_make.cpp)
 target_link_libraries(rman-make PRIVATE rlib)
 
+add_executable(rman-merge src/rman_merge.cpp)
+target_link_libraries(rman-merge PRIVATE rlib)
+
 add_executable(rman-mount src/rman_mount.cpp)
 target_link_libraries(rman-mount PRIVATE rlib fuse3)
 

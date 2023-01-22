@@ -65,8 +65,10 @@ namespace JS {
     struct TypeHandler<ChunkID> : TypeHandlerHex<ChunkID> {};
 }
 
+/* clang-format off */
 JS_OBJ_EXT(rlib::RChunk::Dst, chunkId, hash_type, uncompressed_size);
 JS_OBJ_EXT(rlib::RFile, chunks, fileId, langs, link, path, permissions, size);
+/* clang-format on */
 
 auto RFile::Match::operator()(RFile const& file) const noexcept -> bool {
     if (langs && !std::regex_search(file.langs, *langs)) {
@@ -91,38 +93,14 @@ auto RFile::undump(std::string_view data) -> RFile {
     if (error != JS::Error::NoError) {
         rlib_error(context.makeErrorString().c_str());
     }
-    auto uncompressed_offset = std::uint64_t{};
-    for (auto& chunk : file.chunks) {
-        chunk.uncompressed_offset = uncompressed_offset;
-        uncompressed_offset += chunk.uncompressed_size;
+    if (auto uncompressed_offset = std::uint64_t{}; file.chunks) {
+        for (auto& chunk : *file.chunks) {
+            chunk.uncompressed_offset = uncompressed_offset;
+            uncompressed_offset += chunk.uncompressed_size;
+        }
+        rlib_assert(uncompressed_offset == file.size);
     }
-    rlib_assert(uncompressed_offset == file.size);
     return file;
-}
-
-auto RFile::verify(fs::path const& path, RChunk::Dst::data_cb on_data) const -> std::vector<RChunk::Dst> {
-    if (!fs::exists(path)) {
-        return chunks;
-    }
-    auto infile = IO::File(path, IO::READ);
-    auto result = chunks;
-    remove_if(result, [&, failfast = false](RChunk::Dst const& chunk) mutable -> bool {
-        if (failfast) {
-            return false;
-        }
-        if (!in_range(chunk.uncompressed_offset, chunk.uncompressed_size, infile.size())) {
-            failfast = true;
-            return false;
-        }
-        auto data = infile.copy(chunk.uncompressed_offset, chunk.uncompressed_size);
-        auto id = RChunk::hash(data, chunk.hash_type);
-        if (id == chunk.chunkId) {
-            on_data(chunk, data);
-            return true;
-        }
-        return false;
-    });
-    return result;
 }
 
 auto RFile::read_jrman(std::span<char const> data, read_cb cb) -> void {

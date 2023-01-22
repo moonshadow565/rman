@@ -35,18 +35,36 @@ struct Main {
         std::cerr << "Processing files..." << std::endl;
         RFile::read_file(cli.inmanifest, [&, this](RFile& rfile) -> bool {
             std::cout << "Processing: " << rfile.path << std::endl;
-            return verify_file_fast(rfile, inbundle);
+            if (verify_file(rfile, inbundle)) {
+                std::cout << "OK!" << std::endl;
+                return true;
+            }
+            return false;
         });
     }
 
-    auto verify_file_fast(RFile const& file, RCache const& provider) const -> bool {
-        for (auto const& chunk : file.chunks) {
+    auto verify_file(RFile const& file, RCache const& provider) const -> bool {
+        if (file.size == 0 || !file.link.empty()) {
+            return true;
+        } else if (file.chunks) {
+            return verify_file_chunks(*file.chunks, provider);
+        } else {
+            auto chunks = provider.get_chunks(file.fileId);
+            if (chunks.empty()) {
+                std::cout << fmt::format("Error: missing chunks: {}", file.fileId) << std::endl;
+                return false;
+            }
+            return verify_file_chunks(chunks, provider);
+        }
+    }
+
+    auto verify_file_chunks(std::vector<RChunk::Dst> const& chunks, RCache const& provider) const -> bool {
+        for (auto const& chunk : chunks) {
             if (!provider.contains(chunk.chunkId)) {
                 std::cout << fmt::format("Error: missing chunk: {}", chunk.chunkId) << std::endl;
                 return false;
             }
         }
-        std::cout << "OK!" << std::endl;
         return true;
     }
 };

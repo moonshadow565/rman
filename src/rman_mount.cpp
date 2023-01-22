@@ -88,6 +88,10 @@ struct Main {
             .help("Do not write to cache.")
             .default_value(false)
             .implicit_value(true);
+        program.add_argument("--cache-newonly")
+            .help("Force create new part regardless of size.")
+            .default_value(false)
+            .implicit_value(true);
         program.add_argument("--cache-buffer")
             .help("Size for cache buffer in megabytes [1, 4096]")
             .default_value(std::uint32_t{32})
@@ -137,6 +141,7 @@ struct Main {
         cli.cache = {
             .path = program.get<std::string>("--cache"),
             .readonly = program.get<bool>("--cache-readonly"),
+            .newonly = program.get<bool>("--cache-newonly"),
             .flush_size = program.get<std::uint32_t>("--cache-buffer") * MiB,
             .max_size = program.get<std::uint32_t>("--cache-limit") * GiB,
         };
@@ -221,7 +226,20 @@ struct Main {
 
 static Main main_ = {};
 
-static auto get_stats(RDirEntry const *entry, struct stat *stbuf) {
+static auto find_chunks_in_range(std::span<RChunk::Dst const> chunks, std::size_t offset, std::size_t size) noexcept
+    -> std::span<RChunk::Dst const> {
+    auto start =
+        std::upper_bound(chunks.begin(), chunks.end(), RChunk::Dst{{}, {}, offset}, [](auto const &l, auto const &r) {
+            return l.uncompressed_offset + l.uncompressed_size < r.uncompressed_offset + r.uncompressed_size;
+        });
+    auto stop =
+        std::lower_bound(start, chunks.end(), RChunk::Dst{{}, {}, offset + size}, [](auto const &l, auto const &r) {
+            return l.uncompressed_offset < r.uncompressed_offset;
+        });
+    return std::span(start, stop);
+}
+
+static auto get_stats(RDirEntry const *entry, struct stat *stbuf) -> void {
     memset(stbuf, 0, sizeof(struct stat));
     stbuf->st_mode = 0444;
     if (entry->is_dir()) {
@@ -326,6 +344,7 @@ static int impl_open(const char *cpath, struct fuse_file_info *fi) {
     }
     fi->keep_cache = 1;
     fi->fh = (std::uintptr_t)(void const *)entry;
+    entry->open();
     return 0;
 }
 
@@ -344,6 +363,9 @@ static int impl_read(const char *cpath, char *buf, size_t size, off_t offset, st
     if (offset + size > real_size) {
         size = real_size - offset;
     }
+    if (size == 0) {
+        return 0;
+    }
     thread_local struct Last {
         ChunkID id = {};
         Buffer buffer = {};
@@ -351,7 +373,9 @@ static int impl_read(const char *cpath, char *buf, size_t size, off_t offset, st
     auto done = std::size_t{};
     try {
         rlib_trace("offset: 0x%llx, size: 0x%llx, done: %llx", offset, size, done);
-        for (RChunk::Dst const &chunk : entry->chunks(offset, size)) {
+        auto chunks = entry->chunks([](FileID fileId) { return main_.cache->get_chunks(fileId); });
+        rlib_assert(chunks && !chunks->empty());
+        for (RChunk::Dst const &chunk : find_chunks_in_range(*chunks, offset, size)) {
             rlib_trace("chunkId: %016llX, offset: 0x%llx, size: 0x%0llx",
                        chunk.chunkId,
                        chunk.uncompressed_offset,
@@ -395,7 +419,14 @@ static int impl_read(const char *cpath, char *buf, size_t size, off_t offset, st
 
 static int impl_flush(const char *, struct fuse_file_info *) { return 0; }
 
-static int impl_release(const char *, struct fuse_file_info *) { return 0; }
+static int impl_release(const char *cpath, struct fuse_file_info *fi) {
+    auto const entry = get_entry(cpath, fi);
+    if (!entry) {
+        return -ENOENT;
+    }
+    entry->close();
+    return 0;
+}
 
 static int impl_fsync(const char *, int, struct fuse_file_info *) { return 0; }
 

@@ -1,12 +1,25 @@
 #pragma once
+#include <atomic>
 #include <memory_resource>
 #include <unordered_map>
+#include <variant>
 
 #include "rchunk.hpp"
 #include "rfile.hpp"
 
 namespace rlib {
     struct RDirEntry final {
+        struct Chunks final : std::enable_shared_from_this<Chunks> {
+            FileID id;
+            std::size_t size;
+            std::optional<std::vector<RChunk::Dst>> eager;
+            std::atomic_size_t refc = {0};
+            std::atomic<std::weak_ptr<std::vector<RChunk::Dst> const>> lazy = {};
+
+            Chunks(FileID id, std::size_t size, std::optional<std::vector<RChunk::Dst>> eager) noexcept
+                : id(id), size(size), eager(std::move(eager)) {}
+        };
+
         RDirEntry() = default;
 
         RDirEntry(std::string_view name) : name_(name) {}
@@ -25,12 +38,7 @@ namespace rlib {
 
         auto nlink() const noexcept -> std::size_t { return 1; }
 
-        auto size() const noexcept -> std::size_t {
-            if (auto chunks = chunks_.get(); chunks && !chunks->empty()) {
-                return chunks->back().uncompressed_offset + chunks->back().uncompressed_size;
-            }
-            return children_.size();
-        }
+        auto size() const noexcept -> std::size_t { return chunks_ ? chunks_->size : children_.size(); }
 
         auto is_dir() const noexcept -> bool { return !chunks_; }
 
@@ -38,17 +46,18 @@ namespace rlib {
 
         auto children() const noexcept -> std::span<RDirEntry const> { return children_; }
 
-        auto chunks() const noexcept -> std::span<RChunk::Dst const> {
-            return chunks_ ? *chunks_ : std::span<RChunk::Dst const>{};
-        }
+        auto chunks(function_ref<std::vector<RChunk::Dst>(FileID fileId)> loader) const
+            -> std::shared_ptr<std::vector<RChunk::Dst> const>;
 
-        auto chunks(std::size_t offset, std::size_t size) const noexcept -> std::span<RChunk::Dst const>;
+        auto open() const -> void;
+
+        auto close() const -> void;
 
     private:
         std::string name_;
         std::string link_;
         std::uint64_t time_;
         std::vector<RDirEntry> children_;
-        std::shared_ptr<std::vector<RChunk::Dst>> chunks_;
+        std::shared_ptr<Chunks> chunks_;
     };
 }

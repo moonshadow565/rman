@@ -35,6 +35,7 @@ struct Main {
         std::vector<std::string> inputs = {};
         bool no_progress = {};
         bool append = {};
+        std::size_t bundle_chunks = 0;
         std::size_t chunk_size = 0;
         std::int32_t level = 0;
         std::int32_t level_high_entropy = 0;
@@ -83,12 +84,20 @@ struct Main {
             .action([](std::string const& value) -> std::int32_t {
                 return std::clamp((std::int32_t)std::stol(value), -7, 22);
             });
+        program.add_argument("--bundle-chunks")
+            .default_value(std::uint32_t{0})
+            .help("Maximum ammount of chunks to embed in manifest (0 for allways embed).")
+            .action([](std::string const& value) -> std::int32_t { return (std::uint32_t)std::stoul(value); });
         program.add_argument("--level-high-entropy")
             .default_value(std::int32_t{0})
             .help("Set compression level for high entropy chunks(0 for no special handling).")
             .action([](std::string const& value) -> std::int32_t {
                 return std::clamp((std::int32_t)std::stol(value), -7, 22);
             });
+        program.add_argument("--newonly")
+            .help("Force create new part regardless of size.")
+            .default_value(false)
+            .implicit_value(true);
         program.add_argument("--buffer")
             .help("Size for buffer before flush to disk in megabytes [1, 4096]")
             .default_value(std::uint32_t{32})
@@ -107,6 +116,7 @@ struct Main {
         cli.outmanifest = program.get<std::string>("outmanifest");
         cli.outbundle = {
             .path = program.get<std::string>("outbundle"),
+            .newonly = program.get<bool>("--newonly"),
             .flush_size = program.get<std::uint32_t>("--buffer") * MiB,
             .max_size = program.get<std::uint32_t>("--limit") * GiB,
         };
@@ -116,7 +126,8 @@ struct Main {
             cli.inputs.push_back(cli.rootfolder);
         }
         cli.no_progress = program.get<bool>("--no-progress");
-        cli.no_progress = program.get<bool>("--append");
+        cli.append = program.get<bool>("--append");
+        cli.bundle_chunks = program.get<std::uint32_t>("--bundle-chunks");
         cli.level = program.get<std::int32_t>("--level");
         cli.level_high_entropy = program.get<std::int32_t>("--level-high-entropy");
 
@@ -155,20 +166,22 @@ struct Main {
         rfile.size = infile.size();
         rfile.langs = "none";
         rfile.path = fs_relative(path, cli.rootfolder);
+        rfile.chunks = std::vector<RChunk::Dst>{};
         {
             auto p = progress_bar("PROCESSED", cli.no_progress, index, 0, infile.size());
-            auto xxstate = XXH64_state_s{};
             cli.ar(infile, [&](Ar::Entry const& entry) {
                 auto src = infile.copy(entry.offset, entry.size);
                 auto level = cli.level_high_entropy && entry.high_entropy ? cli.level_high_entropy : cli.level;
                 RChunk::Dst chunk = {outbundle.add_uncompressed(src, level)};
                 chunk.hash_type = HashType::RITO_HKDF;
-                rfile.chunks.push_back(chunk);
+                rfile.chunks->push_back(chunk);
                 chunk.uncompressed_offset = entry.offset;
-                XXH64_update(&xxstate, &chunk.chunkId, sizeof(chunk.chunkId));
                 p.update(entry.offset + entry.size);
             });
-            rfile.fileId = (FileID)(XXH64_digest(&xxstate));
+        }
+        rfile.fileId = outbundle.add_chunks(*rfile.chunks);
+        if (cli.bundle_chunks && rfile.chunks->size() > cli.bundle_chunks) {
+            rfile.chunks = std::nullopt;
         }
         if (!cli.ar.errors.empty()) {
             std::cout << "Smart chunking failed for:\n";

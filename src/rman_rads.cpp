@@ -117,10 +117,20 @@ struct Main {
     auto read_file(std::string const& path, auto const& lookup, auto const& provider) const -> std::vector<char> {
         auto file = find_file(path, lookup);
         rlib_assert(file);
+        auto file_chunks = std::vector<RChunk::Dst>{};
+        if (!file->chunks) {
+            if (file->size) {
+                file_chunks = provider.get_chunks(file->fileId);
+                rlib_assert(!file_chunks.empty());
+            }
+        } else {
+            file_chunks = *file->chunks;
+        }
         auto result = std::vector<char>(file->size);
-        auto bad_chunks = provider.get(file->chunks, [&result](RChunk::Dst const& chunk, std::span<char const> data) {
-            std::memcpy(result.data() + chunk.uncompressed_offset, data.data(), data.size());
-        });
+        auto bad_chunks =
+            provider.get(std::move(file_chunks), [&result](RChunk::Dst const& chunk, std::span<char const> data) {
+                std::memcpy(result.data() + chunk.uncompressed_offset, data.data(), data.size());
+            });
         rlib_assert(bad_chunks.empty());
         return result;
     }

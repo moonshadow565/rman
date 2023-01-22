@@ -36,6 +36,10 @@ struct Main {
             .help("Do not print progress to cerr.")
             .default_value(false)
             .implicit_value(true);
+        program.add_argument("--newonly")
+            .help("Force create new part regardless of size.")
+            .default_value(false)
+            .implicit_value(true);
         program.add_argument("--buffer")
             .help("Size for buffer before flush to disk in megabytes [1, 4096]")
             .default_value(std::uint32_t{32})
@@ -53,6 +57,7 @@ struct Main {
 
         cli.output = {
             .path = program.get<std::string>("output"),
+            .newonly = program.get<bool>("--newonly"),
             .flush_size = program.get<std::uint32_t>("--buffer") * MiB,
             .max_size = program.get<std::uint32_t>("--limit") * GiB,
         };

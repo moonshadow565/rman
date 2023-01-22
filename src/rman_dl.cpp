@@ -62,6 +62,10 @@ struct Main {
             .help("Do not write to cache.")
             .default_value(false)
             .implicit_value(true);
+        program.add_argument("--cache-newonly")
+            .help("Force create new part regardless of size.")
+            .default_value(false)
+            .implicit_value(true);
         program.add_argument("--cache-buffer")
             .help("Size for cache buffer in megabytes [1, 4096]")
             .default_value(std::uint32_t{32})
@@ -130,6 +134,7 @@ struct Main {
         cli.cache = {
             .path = program.get<std::string>("--cache"),
             .readonly = program.get<bool>("--cache-readonly"),
+            .newonly = program.get<bool>("--cache-newonly"),
             .flush_size = program.get<std::uint32_t>("--cache-buffer") * MiB,
             .max_size = program.get<std::uint32_t>("--cache-limit") * GiB,
         };
@@ -191,14 +196,22 @@ struct Main {
         auto done = std::uint64_t{};
         auto bad_chunks = std::vector<RChunk::Dst>{};
 
-        if (!cli.no_verify) {
+        if (!rfile.chunks) {
+            if (rfile.size) {
+                rlib_assert(cache.get());
+                bad_chunks = cache->get_chunks(rfile.fileId);
+                rlib_assert(!bad_chunks.empty());
+            }
+        } else {
+            bad_chunks = *rfile.chunks;
+        }
+
+        if (!cli.no_verify && !bad_chunks.empty()) {
             progress_bar p("VERIFIED", cli.no_progress, index, done, rfile.size);
-            bad_chunks = rfile.verify(path, [&](RChunk::Dst const& chunk, std::span<char const> data) {
+            RChunk::Dst::verify(path, bad_chunks, [&](RChunk::Dst const& chunk, std::span<char const> data) {
                 done += chunk.uncompressed_size;
                 p.update(done);
             });
-        } else {
-            bad_chunks = rfile.chunks;
         }
 
         auto outfile = IO::File();

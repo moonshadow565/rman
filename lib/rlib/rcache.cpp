@@ -67,6 +67,13 @@ auto RCache::add_uncompressed(std::span<char const> src, int level, HashType has
     return chunk;
 }
 
+auto RCache::add_chunks(std::span<RChunk::Dst const> chunks) -> FileID {
+    auto packed = std::vector<RChunk::Dst::Packed>(chunks.begin(), chunks.end());
+    auto result = this->add_uncompressed({(char const*)packed.data(), packed.size() * sizeof(RChunk::Dst::Packed)},
+                                         ZSTD_minCLevel());
+    return (FileID)result.chunkId;
+}
+
 auto RCache::contains(ChunkID chunkId) const noexcept -> bool {
     std::shared_lock lock(this->mutex_);
     return lookup_.contains(chunkId);
@@ -110,6 +117,25 @@ auto RCache::get_into(RChunk const& chunk, std::span<char> dst) const -> bool {
         return true;
     }
     return false;
+}
+
+auto RCache::get_chunks(FileID fileId) const -> std::vector<RChunk::Dst> {
+    std::shared_lock lock(this->mutex_);
+    if (auto c = this->find_internal((ChunkID)fileId); c) {
+        auto const count = c->uncompressed_size / sizeof(RChunk::Dst::Packed);
+        rlib_assert(c->uncompressed_size % sizeof(RChunk::Dst::Packed) == 0);
+        auto src = get_internal(*c);
+        auto dst = std::vector<RChunk::Dst::Packed>(count);
+        auto result = rlib_assert_zstd(ZSTD_decompress(dst.data(), c->uncompressed_size, src.data(), src.size()));
+        rlib_assert(result == c->uncompressed_size);
+        auto converted = std::vector<RChunk::Dst>(dst.begin(), dst.end());
+        for (auto offset = std::uint64_t{0}; auto& c : converted) {
+            c.uncompressed_offset = offset;
+            offset += c.uncompressed_size;
+        }
+        return converted;
+    }
+    return {};
 }
 
 auto RCache::find_internal(ChunkID chunkId) const noexcept -> RChunk::Src const* {
@@ -217,7 +243,13 @@ auto RCache::load_file_internal_read_write() -> void {
     do {
         auto const index = files_.size();
         auto next_path = rcache_file_path(options_.path, index + 1);
-        if (!fs::exists(path) || (fs::file_size(path) < options_.max_size && !fs::exists(next_path))) {
+        // file will be opened in RW when:
+        // - it is a new file
+        // - it is a existing file with no files after it and:
+        //    - newonly flag is not set
+        //    - size would not grow over limit
+        if (!fs::exists(path) ||
+            (!options_.newonly && !fs::exists(next_path) && fs::file_size(path) < options_.max_size)) {
             auto file = std::make_unique<IO::File>(path, rcache_file_flags(false));
             auto size = file->size();
             auto bundle = size ? RBUN::read(*file) : RBUN{};

@@ -23,7 +23,7 @@ namespace rlib {
         std::string link;
         std::string langs;
         std::uint64_t time;
-        std::vector<RChunk::Dst> chunks;
+        std::optional<std::vector<RChunk::Dst>> chunks;
 
         enum BundleStatus : bool {
             UNKNOWN_BUNDLE,
@@ -42,9 +42,6 @@ namespace rlib {
         auto dump() const -> std::string;
 
         static auto undump(std::string_view data) -> RFile;
-
-        auto verify(fs::path const& path, RChunk::Dst::data_cb on_good) const -> std::vector<RChunk::Dst>;
-
         static auto read(std::span<char const> data, read_cb cb) -> BundleStatus;
         static auto read_file(fs::path const& path, read_cb cb) -> BundleStatus;
 

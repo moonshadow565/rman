@@ -54,17 +54,18 @@ Usage: rbun-merge [options] output input
 Adds one or more bundles into first first bundle.
 
 Positional arguments:
-output        	Bundle file to write into. [required]
-input         	Bundle file(s) or folder to write from. [required]
+output             	Bundle file to write into. [required]
+input              	Bundle file(s) or folder to write from. [required]
 
 Optional arguments:
--h --help     	shows help message and exits [default: false]
--v --version  	prints version information and exits [default: false]
---no-extract  	Do not even attempt to extract chunk. [default: false]
---no-hash     	Do not verify hash. [default: false]
---no-progress 	Do not print progress to cerr. [default: false]
---buffer      	Size for buffer before flush to disk in megabytes [1, 4096] [default: 32]
---limit       	Size for bundle limit in gigabytes [0, 4096] [default: 4096]
+-h --help          	shows help message and exits [default: false]
+-v --version       	prints version information and exits [default: false]
+--level-recompress 	Re-compression level for zstd(0 to disable recompression). [default: 0]
+--no-extract       	Do not extract and verify chunk hash. [default: false]
+--no-progress      	Do not print progress to cerr. [default: false]
+--newonly          	Force create new part regardless of size. [default: false]
+--buffer           	Size for buffer before flush to disk in megabytes [1, 4096] [default: 32]
+--limit            	Size for bundle limit in gigabytes [0, 4096] [default: 4096]
 ```
 
 ```sh
@@ -114,31 +115,34 @@ Usage: rman-dl [options] manifest output
 Downloads or repairs files in manifest.
 
 Positional arguments:
-manifest         	Manifest file to read from. [required]
-output           	Output directory to store and verify files from. [default: "."]
+manifest             	Manifest file to read from. [required]
+output               	Output directory to store and verify files from. [default: "."]
 
 Optional arguments:
--h --help        	shows help message and exits [default: false]
--v --version     	prints version information and exits [default: false]
--l --filter-lang 	Filter by language(none for international files) with regex match. [default: <not representable>]
--p --filter-path 	Filter by path with regex match. [default: <not representable>]
---no-verify      	Force force full without verify. [default: false]
---no-write       	Do not write to file. [default: false]
---no-progress    	Do not print progress. [default: false]
---cache          	Cache file path. [default: ""]
---cache-readonly 	Do not write to cache. [default: false]
---cache-buffer   	Size for cache buffer in megabytes [1, 4096] [default: 32]
---cache-limit    	Size for cache bundle limit in gigabytes [0, 4096] [default: 4]
---cdn            	Source url to download files from. [default: "http://lol.secure.dyn.riotcdn.net/channels/public"]
---cdn-retry      	Number of retries to download from url. [default: 3]
---cdn-workers    	Number of connections per downloaded file. [default: 32]
---cdn-interval   	Curl poll interval in miliseconds. [default: 100]
---cdn-verbose    	Curl: verbose logging. [default: false]
---cdn-buffer     	Curl buffer size in killobytes [1, 512]. [default: 512]
---cdn-proxy      	Curl: proxy. [default: ""]
---cdn-useragent  	Curl: user agent string. [default: ""]
---cdn-cookiefile 	Curl cookie file or '-' to disable cookie engine. [default: ""]
---cdn-cookielist 	Curl: cookie list string. [default: ""]
+-h --help            	shows help message and exits [default: false]
+-v --version         	prints version information and exits [default: false]
+-l --filter-lang     	Filter by language(none for international files) with regex match. [default: <not representable>]
+-p --filter-path     	Filter by path with regex match. [default: <not representable>]
+--no-verify          	Force force full without verify. [default: false]
+--no-write           	Do not write to file. [default: false]
+--no-progress        	Do not print progress. [default: false]
+--cache              	Cache file path. [default: ""]
+--cache-readonly     	Do not write to cache. [default: false]
+--cache-newonly      	Force create new part regardless of size. [default: false]
+--cache-buffer       	Size for cache buffer in megabytes [1, 4096] [default: 32]
+--cache-limit        	Size for cache bundle limit in gigabytes [0, 4096] [default: 4]
+--cdn                	Source url to download files from. [default: "http://lol.secure.dyn.riotcdn.net/channels/public"]
+--cdn-lowspeed-time  	Curl seconds that the transfer speed should be below. [default: 0]
+--cdn-lowspeed-limit 	Curl average transfer speed in killobytes per second that the transfer should be above. [default: 64]
+--cdn-retry          	Number of retries to download from url. [default: 3]
+--cdn-workers        	Number of connections per downloaded file. [default: 32]
+--cdn-interval       	Curl poll interval in miliseconds. [default: 100]
+--cdn-verbose        	Curl: verbose logging. [default: false]
+--cdn-buffer         	Curl buffer size in killobytes [1, 512]. [default: 512]
+--cdn-proxy          	Curl: proxy. [default: ""]
+--cdn-useragent      	Curl: user agent string. [default: ""]
+--cdn-cookiefile     	Curl cookie file or '-' to disable cookie engine. [default: ""]
+--cdn-cookielist     	Curl: cookie list string. [default: ""]
 ```
 
 ```sh
@@ -171,15 +175,72 @@ input                	Files or folders for manifest. [default: {}]
 Optional arguments:
 -h --help            	shows help message and exits [default: false]
 -v --version         	prints version information and exits [default: false]
+--append             	Append manifest instead of overwriting. [default: false]
 --no-progress        	Do not print progress. [default: false]
 --no-ar              	Regex of disable smart chunkers, can be any of: fsb, fsb5, load, mac_exe, mac_fat, pe, wad, wpk, zip [default: ""]
 --no-ar-error        	Do not stop on smart chunking error. [default: false]
 --ar-min             	Smart chunking minimum size in killobytes [1, 4096]. [default: 4]
 --chunk-size         	Chunk max size in megabytes [1, 64]. [default: 1]
 --level              	Compression level for zstd. [default: 6]
+--bundle-chunks      	Maximum ammount of chunks to embed in manifest (0 for allways embed). [default: 0]
 --level-high-entropy 	Set compression level for high entropy chunks(0 for no special handling). [default: 0]
+--newonly            	Force create new part regardless of size. [default: false]
 --buffer             	Size for buffer before flush to disk in megabytes [1, 4096] [default: 32]
 --limit              	Size for bundle limit in gigabytes [0, 4096] [default: 4096]
+```
+
+```sh
+Usage: rman-merge [options] outmanifest manifests 
+
+Merges multiple manifests into one
+
+Positional arguments:
+outmanifest      	Manifest to write into. [required]
+manifests        	Manifest files to read from. [required]
+
+Optional arguments:
+-h --help        	shows help message and exits [default: false]
+-v --version     	prints version information and exits [default: false]
+--no-progress    	Do not print progress. [default: false]
+--bundle-chunks  	Maximum ammount of chunks to embed in manifest (0 for allways embed). [default: 0]
+--cache          	Cache file path. [default: ""]
+--cache-newonly  	Force create new part regardless of size. [default: false]
+--cache-buffer   	Size for cache buffer in megabytes [1, 4096] [default: 32]
+--cache-limit    	Size for cache bundle limit in gigabytes [0, 4096] [default: 4096]
+-l --filter-lang 	Filter: language(none for international files). [default: <not representable>]
+-p --filter-path 	Filter: path with regex match. [default: <not representable>]
+```
+
+```sh
+Usage: rman-mount [options] output manifests 
+
+Mounts manifests.
+
+Positional arguments:
+output               	output directory to mount in. [required]
+manifests            	Manifest files to read from. [required]
+
+Optional arguments:
+-h --help            	shows help message and exits [default: false]
+-v --version         	prints version information and exits [default: false]
+--fuse-debug         	FUSE debug [default: false]
+--with-prefix        	Prefix file paths with manifest name [default: false]
+-l --filter-lang     	Filter by language(none for international files) with regex match. [default: <not representable>]
+-p --filter-path     	Filter by path with regex match. [default: <not representable>]
+--cache              	Cache file path. [default: ""]
+--cache-readonly     	Do not write to cache. [default: false]
+--cache-newonly      	Force create new part regardless of size. [default: false]
+--cache-buffer       	Size for cache buffer in megabytes [1, 4096] [default: 32]
+--cache-limit        	Size for cache bundle limit in gigabytes [0, 4096] [default: 4]
+--cdn                	Source url to download files from. [default: "http://lol.secure.dyn.riotcdn.net/channels/public"]
+--cdn-lowspeed-time  	Curl seconds that the transfer speed should be below. [default: 0]
+--cdn-lowspeed-limit 	Curl average transfer speed in killobytes per second that the transfer should be above. [default: 64]
+--cdn-verbose        	Curl: verbose logging. [default: false]
+--cdn-buffer         	Curl buffer size in killobytes [1, 512]. [default: 512]
+--cdn-proxy          	Curl: proxy. [default: ""]
+--cdn-useragent      	Curl: user agent string. [default: ""]
+--cdn-cookiefile     	Curl cookie file or '-' to disable cookie engine. [default: ""]
+--cdn-cookielist     	Curl: cookie list string. [default: ""]
 ```
 
 ```sh
@@ -191,10 +252,11 @@ Positional arguments:
 outmanifest  	Manifest to write into. [required]
 inmanifest   	Manifest to read from. [required]
 inbundle     	Source bundle to read from. [required]
-inrelease    	Project or solution path inside bundle. [required]
+inrelease    	Project or solution path inside bundle. If bundle is empty treat it as regex instead. [default: ""]
 
 Optional arguments:
 -h --help    	shows help message and exits [default: false]
 -v --version 	prints version information and exits [default: false]
+--append     	Append manifest instead of overwriting. [default: false]
 ```
 

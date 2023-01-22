@@ -42,6 +42,25 @@ namespace rlib {
         HashType hash_type;
         std::uint64_t uncompressed_offset;
         using data_cb = function_ref<void(RChunk::Dst const& chunk, std::span<char const> data)>;
+
+        static auto verify(fs::path const& path, std::vector<RChunk::Dst>& chunks, data_cb on_good) -> void;
+
+        struct Packed;
+    };
+
+    struct RChunk::Dst::Packed {
+        std::array<std::uint32_t, 2> chunkId = {};
+        std::uint32_t uncompressed_size : 28 = {};
+        HashType hash_type : 4 = {};
+
+        constexpr Packed() noexcept = default;
+        constexpr Packed(RChunk::Dst const& chunk) noexcept
+            : chunkId(std::bit_cast<std::array<std::uint32_t, 2>>(chunk.chunkId)),
+              uncompressed_size(chunk.uncompressed_size),
+              hash_type(chunk.hash_type) {}
+        constexpr operator RChunk::Dst() const noexcept {
+            return {{{std::bit_cast<ChunkID>(chunkId), uncompressed_size, 0}, {}, 0}, hash_type, 0};
+        }
     };
 }
 

@@ -6,8 +6,38 @@
 
 using namespace rlib;
 
+auto RDirEntry::chunks(function_ref<std::vector<RChunk::Dst>(FileID fileId)> loader) const
+    -> std::shared_ptr<std::vector<RChunk::Dst> const> {
+    if (auto chunks = this->chunks_.get()) {
+        if (chunks->eager) {
+            return std::shared_ptr<std::vector<RChunk::Dst> const>(chunks->shared_from_this(), &*chunks->eager);
+        }
+        if (auto lazy = chunks->lazy.load(); auto cached = lazy.lock()) {
+            return cached;
+        }
+        auto cached = std::make_shared<std::vector<RChunk::Dst> const>(loader(chunks->id));
+        chunks->lazy = cached;
+        return cached;
+    }
+    return {};
+}
+
+auto RDirEntry::open() const -> void {
+    if (auto chunks = this->chunks_.get(); chunks && !chunks->eager) {
+        ++chunks->refc;
+    }
+}
+
+auto RDirEntry::close() const -> void {
+    if (auto chunks = this->chunks_.get(); chunks && !chunks->eager) {
+        if (--chunks->refc == 0) {
+            chunks->lazy.store({});
+        }
+    }
+}
+
 auto RDirEntry::builder() -> std::function<bool(RFile& rfile)> {
-    auto cache = std::make_shared<std::unordered_map<FileID, std::shared_ptr<std::vector<RChunk::Dst>>>>();
+    auto cache = std::make_shared<std::unordered_map<FileID, std::shared_ptr<Chunks>>>();
     auto builder = [&dir = *this, cache](RFile& rfile) {
         auto cur = &dir;
         auto path = std::string_view(rfile.path);
@@ -30,7 +60,7 @@ auto RDirEntry::builder() -> std::function<bool(RFile& rfile)> {
         if (!cur->chunks_) {
             auto& chunks = (*cache)[rfile.fileId];
             if (!chunks) {
-                chunks = std::make_shared<std::vector<RChunk::Dst>>(std::move(rfile.chunks));
+                chunks = std::make_shared<Chunks>(rfile.fileId, rfile.size, std::move(rfile.chunks));
             }
             cur->chunks_ = chunks;
             cur->link_ = rfile.link;
@@ -56,20 +86,4 @@ auto RDirEntry::find(std::string_view path) const noexcept -> RDirEntry const* {
         path = remain;
     }
     return cur;
-}
-
-auto RDirEntry::chunks(std::size_t offset, std::size_t size) const noexcept -> std::span<RChunk::Dst const> {
-    if (!chunks_ || chunks_->empty() || size == 0) {
-        return {};
-    }
-    auto chunks = std::span(*chunks_);
-    auto start =
-        std::upper_bound(chunks.begin(), chunks.end(), RChunk::Dst{{}, {}, offset}, [](auto const& l, auto const& r) {
-            return l.uncompressed_offset + l.uncompressed_size < r.uncompressed_offset + r.uncompressed_size;
-        });
-    auto stop =
-        std::lower_bound(start, chunks.end(), RChunk::Dst{{}, {}, offset + size}, [](auto const& l, auto const& r) {
-            return l.uncompressed_offset < r.uncompressed_offset;
-        });
-    return std::span(start, stop);
 }
