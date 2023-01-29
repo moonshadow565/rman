@@ -18,7 +18,7 @@ struct Main {
         RCache::Options cache = {};
         std::vector<std::string> manifests = {};
         RFile::Match match = {};
-        std::size_t bundle_chunks = 0;
+        bool strip_chunks = 0;
     } cli = {};
     std::unique_ptr<RCache> cache = {};
 
@@ -29,10 +29,7 @@ struct Main {
         program.add_argument("manifests").help("Manifest files to read from.").remaining().required();
 
         program.add_argument("--no-progress").help("Do not print progress.").default_value(false).implicit_value(true);
-        program.add_argument("--bundle-chunks")
-            .default_value(std::uint32_t{0})
-            .help("Maximum ammount of chunks to embed in manifest (0 for allways embed).")
-            .action([](std::string const& value) -> std::int32_t { return (std::uint32_t)std::stoul(value); });
+        program.add_argument("--strip-chunks").default_value(false).implicit_value(true);
 
         // Cache options
         program.add_argument("--cache").help("Cache file path.").default_value(std::string{""});
@@ -88,7 +85,7 @@ struct Main {
             .max_size = program.get<std::uint32_t>("--cache-limit") * GiB,
         };
 
-        cli.bundle_chunks = program.get<std::uint32_t>("--bundle-chunks");
+        cli.strip_chunks = program.get<bool>("--strip-chunks");
 
         cli.match.langs = program.get<std::optional<std::regex>>("--filter-lang");
         cli.match.path = program.get<std::optional<std::regex>>("--filter-path");
@@ -122,7 +119,7 @@ struct Main {
         if (cache && rfile.chunks) {
             rfile.fileId = cache->add_chunks(*rfile.chunks);
         }
-        if (cli.bundle_chunks && rfile.chunks && rfile.chunks->size() > cli.bundle_chunks) {
+        if (cli.strip_chunks && rfile.chunks && rfile.chunks->size() > 1) {
             auto packed = std::vector<RChunk::Dst::Packed>(rfile.chunks->begin(), rfile.chunks->end());
             rfile.fileId =
                 (FileID)RChunk::hash({(char const*)packed.data(), packed.size() * sizeof(RChunk::Dst::Packed)},

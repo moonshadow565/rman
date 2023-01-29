@@ -29,12 +29,15 @@ namespace rlib {
         std::size_t chunk_min;
         std::size_t chunk_max;
         std::bitset<32> disabled;
-        bool no_error;
+        std::uint32_t cdc;
+        bool strict;
         mutable std::vector<std::string> errors;
 
-        static auto PROCESSORS() noexcept -> std::span<Processor const>;
+        static auto PROCESSORS(bool cdc = false) noexcept -> std::span<Processor const>;
 
-        static auto PROCESSORS_LIST() noexcept -> std::string const&;
+        static auto PROCESSORS_LIST(bool cdc = false) noexcept -> std::string;
+
+        static auto PROCESSOR_PARSE(std::string const& str, bool cdc = false) -> std::uint32_t;
 
         auto operator()(IO const& io, offset_cb cb) const -> void;
 
@@ -71,5 +74,9 @@ namespace rlib {
         auto process_iter(IO const& io, offset_cb cb, Entry const& top_entry, std::vector<Entry> entries) const -> bool;
 
         auto push_error(Entry const& top_entry, char const* func, char const* expr) const -> void;
+
+        auto process_cdc_fixed(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
+
+        auto process_cdc_bup(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
     };
 }

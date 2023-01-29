@@ -14,21 +14,6 @@
 
 using namespace rlib;
 
-static auto parse_processors(std::string const& value) -> std::bitset<32> {
-    if (value.empty()) {
-        return 0;
-    }
-    auto result = std::bitset<32>{};
-    auto filter = std::regex{value, std::regex::optimize | std::regex::icase};
-    for (std::size_t i = 0; auto const [name, _] : Ar::PROCESSORS()) {
-        if (std::regex_match(name.data(), filter)) {
-            result.set(i);
-        }
-        ++i;
-    }
-    return result;
-}
-
 struct ResumeFile {
 private:
     struct Entry {
@@ -129,9 +114,10 @@ struct Main {
         std::vector<std::string> inmanifests = {};
         std::string resume_file = {};
         std::size_t resume_buffer = {};
+        RFile::Match match = {};
         bool no_progress = {};
         bool append = {};
-        std::size_t bundle_chunks = 0;
+        bool strip_chunks = 0;
         std::size_t chunk_size = 0;
         std::int32_t level = 0;
         std::int32_t level_high_entropy = 0;
@@ -150,6 +136,27 @@ struct Main {
             .remaining()
             .default_value(std::vector<std::string>{});
 
+        program.add_argument("-l", "--filter-lang")
+            .help("Filter: language(none for international files).")
+            .default_value(std::optional<std::regex>{})
+            .action([](std::string const& value) -> std::optional<std::regex> {
+                if (value.empty()) {
+                    return std::nullopt;
+                } else {
+                    return std::regex{value, std::regex::optimize | std::regex::icase};
+                }
+            });
+        program.add_argument("-p", "--filter-path")
+            .help("Filter: path with regex match.")
+            .default_value(std::optional<std::regex>{})
+            .action([](std::string const& value) -> std::optional<std::regex> {
+                if (value.empty()) {
+                    return std::nullopt;
+                } else {
+                    return std::regex{value, std::regex::optimize | std::regex::icase};
+                }
+            });
+
         // resume file
         program.add_argument("--resume")
             .help("Resume file path used to store processed fileIds.")
@@ -166,14 +173,18 @@ struct Main {
             .default_value(false)
             .implicit_value(true);
         program.add_argument("--no-progress").help("Do not print progress.").default_value(false).implicit_value(true);
+        program.add_argument("--strip-chunks").default_value(false).implicit_value(true);
+
         program.add_argument("--no-ar")
             .help("Regex of disable smart chunkers, can be any of: " + Ar::PROCESSORS_LIST())
             .default_value(std::string{});
-        program.add_argument("--no-ar-error")
-            .help("Do not stop on smart chunking error.")
+        program.add_argument("--ar-strict")
+            .help("Do not fallback to dumb chunking on ar errors.")
             .default_value(false)
             .implicit_value(true);
-
+        program.add_argument("--cdc")
+            .help("Dumb chunking fallback algorithm " + Ar::PROCESSORS_LIST(true))
+            .default_value(std::string{"fixed"});
         program.add_argument("--ar-min")
             .default_value(std::uint32_t{4})
             .help("Smart chunking minimum size in killobytes [1, 4096].")
@@ -182,9 +193,9 @@ struct Main {
             });
         program.add_argument("--chunk-size")
             .default_value(std::uint32_t{1024})
-            .help("Chunk max size in killobytes [1, 65536].")
+            .help("Chunk max size in killobytes [1, 8096].")
             .action([](std::string const& value) -> std::uint32_t {
-                return std::clamp((std::uint32_t)std::stoul(value), 1u, 65536u);
+                return std::clamp((std::uint32_t)std::stoul(value), 1u, 8096u);
             });
         program.add_argument("--level")
             .default_value(std::int32_t{6})
@@ -192,16 +203,13 @@ struct Main {
             .action([](std::string const& value) -> std::int32_t {
                 return std::clamp((std::int32_t)std::stol(value), -7, 22);
             });
-        program.add_argument("--bundle-chunks")
-            .default_value(std::uint32_t{0})
-            .help("Maximum ammount of chunks to embed in manifest (0 for allways embed).")
-            .action([](std::string const& value) -> std::uint32_t { return (std::uint32_t)std::stoul(value); });
         program.add_argument("--level-high-entropy")
             .default_value(std::int32_t{0})
             .help("Set compression level for high entropy chunks(0 for no special handling).")
             .action([](std::string const& value) -> std::int32_t {
                 return std::clamp((std::int32_t)std::stol(value), -7, 22);
             });
+
         program.add_argument("--newonly")
             .help("Force create new part regardless of size.")
             .default_value(false)
@@ -232,19 +240,23 @@ struct Main {
         cli.inbundle = {.path = program.get<std::string>("inbundle"), .readonly = true};
         cli.inmanifests = program.get<std::vector<std::string>>("inmanifests");
 
+        cli.match.langs = program.get<std::optional<std::regex>>("--filter-lang");
+        cli.match.path = program.get<std::optional<std::regex>>("--filter-path");
+
         cli.resume_file = program.get<std::string>("--resume");
         cli.resume_buffer = program.get<std::uint32_t>("--resume-buffer") * KiB;
         cli.no_progress = program.get<bool>("--no-progress");
         cli.append = program.get<bool>("--append");
-        cli.bundle_chunks = program.get<std::uint32_t>("--bundle-chunks");
+        cli.strip_chunks = program.get<bool>("--strip-chunks");
         cli.level = program.get<std::int32_t>("--level");
         cli.level_high_entropy = program.get<std::int32_t>("--level-high-entropy");
 
         cli.ar = Ar{
             .chunk_min = program.get<std::uint32_t>("--ar-min") * KiB,
             .chunk_max = program.get<std::uint32_t>("--chunk-size") * KiB,
-            .disabled = parse_processors(program.get<std::string>("--no-ar")),
-            .no_error = program.get<bool>("--no-ar-error"),
+            .disabled = Ar::PROCESSOR_PARSE(program.get<std::string>("--no-ar")),
+            .cdc = Ar::PROCESSOR_PARSE(program.get<std::string>("--cdc"), true),
+            .strict = program.get<bool>("--ar-strict"),
         };
     }
 
@@ -268,8 +280,10 @@ struct Main {
         for (std::uint32_t index = manifests.size(); auto const& path : manifests) {
             std::cerr << "MANIFEST: " << path << std::endl;
             RFile::read_file(path, [&, this](RFile& ofile) {
-                auto nfile = add_file(ofile, outbundle, resume_file, index);
-                writer(std::move(nfile));
+                if (cli.match(ofile)) {
+                    auto nfile = add_file(ofile, outbundle, resume_file, index);
+                    writer(std::move(nfile));
+                }
                 return true;
             });
             --index;
@@ -323,7 +337,7 @@ struct Main {
             std::cout << std::flush;
         }
         rfile.fileId = outbundle.add_chunks(*rfile.chunks);
-        if (cli.bundle_chunks && rfile.chunks->size() > cli.bundle_chunks) {
+        if (cli.strip_chunks && rfile.chunks && rfile.chunks->size() > 1) {
             rfile.chunks = std::nullopt;
         }
         resume_file.save(fileId, rfile);
