@@ -67,7 +67,7 @@ namespace JS {
 
 /* clang-format off */
 JS_OBJ_EXT(rlib::RChunk::Dst, chunkId, hash_type, uncompressed_size);
-JS_OBJ_EXT(rlib::RFile, chunks, fileId, langs, link, path, permissions, size);
+JS_OBJ_EXT(rlib::RFile, chunks, fileId, langs, link, path, permissions, size, time);
 /* clang-format on */
 
 auto RFile::Match::operator()(RFile const& file) const noexcept -> bool {

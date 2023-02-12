@@ -62,6 +62,9 @@ struct Main {
                 store.push_back(fmt::arg("size", rfile.size));
                 store.push_back(fmt::arg("fileId", rfile.fileId));
                 store.push_back(fmt::arg("langs", rfile.langs));
+                store.push_back(fmt::arg("link", rfile.link));
+                store.push_back(fmt::arg("perms", rfile.permissions));
+                store.push_back(fmt::arg("time", rfile.time));
                 std::cout << fmt::vformat(cli.format, store) << std::endl;
             }
             return true;

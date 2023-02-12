@@ -64,6 +64,9 @@ auto RDirEntry::builder() -> std::function<bool(RFile& rfile)> {
             }
             cur->chunks_ = chunks;
             cur->link_ = rfile.link;
+            if ((rfile.permissions & 01) != 0) {
+                cur->exec_ = 1;
+            }
         }
         return true;
     };

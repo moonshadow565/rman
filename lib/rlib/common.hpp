@@ -243,4 +243,8 @@ namespace rlib {
                               bool recursive = false) -> std::vector<fs::path>;
 
     extern auto fs_relative(fs::path const& target, fs::path const& parent) -> std::string;
+
+    extern auto fs_get_time(fs::path const& target) -> std::uint64_t;
+
+    extern auto fs_set_time(fs::path const& target, std::uint64_t time) -> void;
 }

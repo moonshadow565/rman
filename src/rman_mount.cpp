@@ -202,19 +202,15 @@ struct Main {
         auto builder = root->builder();
         for (auto const &p : paths) {
             auto const name = p.filename().replace_extension("").generic_string() + '/';
-            auto const time_file = fs::last_write_time(p);
-#ifdef _MSC_VER
-            auto const time_sys = decltype(time_file)::clock::to_utc(time_file).time_since_epoch();
-#else
-            auto const time_sys = decltype(time_file)::clock::to_sys(time_file).time_since_epoch();
-#endif
-            auto const time_sec = std::chrono::duration_cast<std::chrono::seconds>(time_sys).count();
+            auto const time_sec = fs_get_time(p);
             RFile::read_file(p, [&, this](RFile &rfile) {
                 if (this->cli.with_prefix) {
                     rfile.path.insert(rfile.path.begin(), name.begin(), name.end());
                 }
                 if (cli.match(rfile)) {
-                    rfile.time = time_sec;
+                    if (!rfile.time) {
+                        rfile.time = time_sec;
+                    }
                     builder(rfile);
                 }
                 return true;
@@ -243,13 +239,17 @@ static auto find_chunks_in_range(std::span<RChunk::Dst const> chunks, std::size_
 
 static auto get_stats(RDirEntry const *entry, struct stat *stbuf) -> void {
     memset(stbuf, 0, sizeof(struct stat));
-    stbuf->st_mode = 0444;
+    stbuf->st_mode = 0644;
     if (entry->is_dir()) {
         stbuf->st_mode |= S_IFDIR;
+        stbuf->st_mode |= 0111;
     } else if (entry->is_link()) {
         stbuf->st_mode |= S_IFLNK;
     } else {
         stbuf->st_mode |= S_IFREG;
+        if (entry->is_exec()) {
+            stbuf->st_mode |= 0111;
+        }
     }
     stbuf->st_nlink = entry->nlink();
     stbuf->st_size = entry->size();

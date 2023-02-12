@@ -32,7 +32,7 @@ namespace rlib {
 
         auto name() const noexcept -> std::string_view { return name_; }
 
-        auto time() const noexcept -> std::uint64_t const& { return time_; }
+        auto time() const noexcept -> std::uint64_t { return time_; }
 
         auto link() const noexcept -> std::string_view { return link_; }
 
@@ -43,6 +43,8 @@ namespace rlib {
         auto is_dir() const noexcept -> bool { return !chunks_; }
 
         auto is_link() const noexcept -> bool { return !link_.empty(); }
+
+        auto is_exec() const noexcept -> bool { return exec_; }
 
         auto children() const noexcept -> std::span<RDirEntry const> { return children_; }
 
@@ -56,7 +58,8 @@ namespace rlib {
     private:
         std::string name_;
         std::string link_;
-        std::uint64_t time_;
+        std::uint64_t exec_ : 1;
+        std::uint64_t time_ : 63;
         std::vector<RDirEntry> children_;
         std::shared_ptr<Chunks> chunks_;
     };

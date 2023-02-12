@@ -161,3 +161,18 @@ auto rlib::fs_relative(fs::path const& target, fs::path const& parent) -> std::s
     rlib_assert(target_str.starts_with(parent_str));
     return target_str.substr(parent_str.size());
 }
+
+auto rlib::fs_get_time(fs::path const& target) -> std::uint64_t {
+    auto const time_file = fs::last_write_time(target);
+#ifdef _MSC_VER
+    auto const time_sys = decltype(time_file)::clock::to_utc(time_file).time_since_epoch();
+#else
+    auto const time_sys = decltype(time_file)::clock::to_sys(time_file).time_since_epoch();
+#endif
+    auto const time_sec = std::chrono::duration_cast<std::chrono::seconds>(time_sys).count();
+    return time_sec;
+}
+
+auto rlib::fs_set_time(fs::path const& target, std::uint64_t value) -> void {
+    throw std::runtime_error("fs_set_time not implemented!");
+}

@@ -152,6 +152,12 @@ struct Main {
         rfile.langs = "none";
         rfile.path = fs_relative(path, cli.rootfolder);
         rfile.chunks = std::vector<RChunk::Dst>{};
+        auto const status = fs::status(path);
+        auto const perms = status.permissions();
+        if ((perms & (fs::perms::others_exec | fs::perms::group_exec | fs::perms::owner_exec)) != fs::perms{}) {
+            rfile.permissions = 1;
+        }
+        rfile.time = fs_get_time(path);
         {
             auto p = progress_bar("PROCESSED", cli.no_progress, index, 0, infile.size());
             cli.ar(infile, [&](Ar::Entry const& entry) {

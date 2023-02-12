@@ -212,17 +212,17 @@ struct Main {
             });
         }
 
-        auto outfile = IO::File();
+        auto outfile = std::unique_ptr<IO::File>();
         if (!cli.no_write) {
-            outfile = IO::File(path, IO::WRITE);
-            rlib_assert(outfile.resize(0, rfile.size));
+            outfile = std::make_unique<IO::File>(path, IO::WRITE);
+            rlib_assert(outfile->resize(0, rfile.size));
         }
 
         if (!bad_chunks.empty() && cdn) {
             progress_bar p("DOWNLOAD", cli.no_progress, index, done, rfile.size);
             bad_chunks = cdn->get(std::move(bad_chunks), [&](RChunk::Dst const& chunk, std::span<char const> data) {
-                if (outfile.fd()) {
-                    rlib_assert(outfile.write(chunk.uncompressed_offset, data));
+                if (outfile) {
+                    rlib_assert(outfile->write(chunk.uncompressed_offset, data));
                 }
                 done += chunk.uncompressed_size;
                 p.update(done);
@@ -232,6 +232,14 @@ struct Main {
         if (!bad_chunks.empty()) {
             std::cout << "FAIL!" << std::endl;
         } else {
+            if (outfile) {
+                outfile = nullptr;
+                if (rfile.permissions & 01) {
+                    fs::permissions(path,
+                                    fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec,
+                                    fs::perm_options::add);
+                }
+            }
             std::cout << "OK!" << std::endl;
         }
     }
