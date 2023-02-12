@@ -151,15 +151,15 @@ auto RFile::read_zrman(std::span<char const> data, read_cb cb) -> void {
     }
 }
 
-auto RFile::read(std::span<char const> data, read_cb cb) -> BundleStatus {
+auto RFile::read(std::span<char const> data, read_cb cb) -> void {
     rlib_assert(data.size() >= 5);
     if (std::memcmp(data.data(), "JRMAN", 5) == 0) {
         read_jrman(data, cb);
-        return UNKNOWN_BUNDLE;
+        return;
     }
     if (std::memcmp(data.data(), "\x28\xB5\x2F\xFD", 4) == 0) {
         read_zrman(data, cb);
-        return UNKNOWN_BUNDLE;
+        return;
     }
     auto rman = RMAN::read(data);
     for (auto& rfile : rman.files) {
@@ -167,13 +167,24 @@ auto RFile::read(std::span<char const> data, read_cb cb) -> BundleStatus {
             break;
         }
     }
-    return rman.manifestId != ManifestID::None ? KNOWN_BUNDLE : UNKNOWN_BUNDLE;
 }
 
-auto RFile::read_file(fs::path const& path, read_cb cb) -> BundleStatus {
+auto RFile::read_file(fs::path const& path, read_cb cb) -> void {
     auto infile = IO::MMap(path, IO::READ);
     auto data = infile.copy(0, infile.size());
     return RFile::read(data, cb);
+}
+
+auto RFile::has_known_bundle(fs::path const& path) -> bool {
+    if (!fs::exists(path)) {
+        return false;
+    }
+    auto infile = IO::File(path, IO::READ);
+    char magic[4];
+    if (!infile.read(0, magic)) {
+        return false;
+    }
+    return std::memcmp(magic, "RMAN", 4) == 0;
 }
 
 auto RFile::writer(fs::path const& out, bool append) -> std::function<void(RFile&&)> {

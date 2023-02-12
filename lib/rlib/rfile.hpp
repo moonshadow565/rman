@@ -25,11 +25,6 @@ namespace rlib {
         std::uint64_t time;
         std::optional<std::vector<RChunk::Dst>> chunks;
 
-        enum BundleStatus : bool {
-            UNKNOWN_BUNDLE,
-            KNOWN_BUNDLE,
-        };
-
         struct Match {
             std::optional<std::regex> path;
             std::optional<std::regex> langs;
@@ -42,10 +37,12 @@ namespace rlib {
         auto dump() const -> std::string;
 
         static auto undump(std::string_view data) -> RFile;
-        static auto read(std::span<char const> data, read_cb cb) -> BundleStatus;
-        static auto read_file(fs::path const& path, read_cb cb) -> BundleStatus;
+        static auto read(std::span<char const> data, read_cb cb) -> void;
+        static auto read_file(fs::path const& path, read_cb cb) -> void;
 
         static auto writer(fs::path const& out, bool append = false) -> std::function<void(RFile&&)>;
+
+        static auto has_known_bundle(fs::path const& path) -> bool;
 
     private:
         static auto read_jrman(std::span<char const> data, read_cb cb) -> void;

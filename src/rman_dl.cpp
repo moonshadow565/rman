@@ -157,16 +157,7 @@ struct Main {
 
     auto run() -> void {
         rlib_trace("Manifest file: %s", cli.manifest.c_str());
-        auto files = std::vector<RFile>{};
-
-        auto bundle_status = RFile::read_file(cli.manifest, [&, this](RFile& rfile) {
-            if (cli.match(rfile)) {
-                files.emplace_back(std::move(rfile));
-            }
-            return true;
-        });
-
-        if (bundle_status != RFile::KNOWN_BUNDLE) {
+        if (!RFile::has_known_bundle(cli.manifest)) {
             cli.cdn.url.clear();
         }
 
@@ -184,6 +175,13 @@ struct Main {
 
         cdn = std::make_unique<RCDN>(cli.cdn, cache.get());
 
+        auto files = std::vector<RFile>{};
+        RFile::read_file(cli.manifest, [&, this](RFile& rfile) {
+            if (cli.match(rfile)) {
+                files.emplace_back(std::move(rfile));
+            }
+            return true;
+        });
         for (std::uint32_t index = files.size(); auto const& rfile : files) {
             download_file(rfile, index--);
         }

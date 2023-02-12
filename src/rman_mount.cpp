@@ -181,6 +181,22 @@ struct Main {
 
         std::cerr << "Collecting input manifests ... " << std::endl;
         auto paths = collect_files(cli.manifests, {});
+        for (auto const &p : paths) {
+            if (!RFile::has_known_bundle(p)) {
+                cli.cdn.url.clear();
+            }
+        }
+
+        if (cli.cdn.url.empty()) {
+            cli.cache.readonly = true;
+        }
+
+        if (!cli.cache.path.empty()) {
+            std::cerr << "Parsing bundle ... " << std::endl;
+            cache = std::make_unique<RCache>(cli.cache);
+        }
+
+        cdn = std::make_unique<RCDN>(cli.cdn, cache.get());
 
         std::cerr << "Parsing input manifests ... " << std::endl;
         auto builder = root->builder();
@@ -193,7 +209,7 @@ struct Main {
             auto const time_sys = decltype(time_file)::clock::to_sys(time_file).time_since_epoch();
 #endif
             auto const time_sec = std::chrono::duration_cast<std::chrono::seconds>(time_sys).count();
-            auto bundle_status = RFile::read_file(p, [&, this](RFile &rfile) {
+            RFile::read_file(p, [&, this](RFile &rfile) {
                 if (this->cli.with_prefix) {
                     rfile.path.insert(rfile.path.begin(), name.begin(), name.end());
                 }
@@ -203,22 +219,8 @@ struct Main {
                 }
                 return true;
             });
-            if (bundle_status != RFile::KNOWN_BUNDLE) {
-                cli.cdn.url.clear();
-            }
         }
         builder = nullptr;
-
-        if (cli.cdn.url.empty()) {
-            cli.cache.readonly = true;
-        }
-
-        if (!cli.cache.path.empty()) {
-            std::cerr << "Parsing bundle ... " << std::endl;
-            cache = std::make_unique<RCache>(cli.cache);
-        }
-
-        cdn = std::make_unique<RCDN>(cli.cdn, cache.get());
 
         std::cerr << "Mounted!" << std::endl;
     }
