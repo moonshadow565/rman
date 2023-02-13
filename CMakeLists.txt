@@ -55,6 +55,12 @@ target_include_directories(rlib PUBLIC lib/)
 target_link_libraries(rlib PUBLIC argparse libcurl zstd fmt)
 target_link_libraries(rlib PUBLIC argparse zstd fmt)
 target_link_libraries(rlib PRIVATE json_struct digestpp miniz)
+if (WIN32)
+    target_sources(rlib INTERFACE
+        res/longpath.manifest
+        res/utf8.manifest
+    )
+endif()
 
 add_executable(rman-dl src/rman_dl.cpp)
 target_link_libraries(rman-dl PRIVATE rlib)
