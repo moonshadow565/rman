@@ -18,7 +18,7 @@ namespace rlib {
     };
 
     struct RChunk {
-        static constexpr std::size_t LIMIT = 16u * 1024 * 1024 - 1;
+        static constexpr std::size_t LIMIT = 256u * 1024 * 1024 - 1;
 
         ChunkID chunkId;
         std::uint32_t uncompressed_size;
