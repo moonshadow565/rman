@@ -44,12 +44,17 @@ auto RCache::add(RChunk const& chunk, std::span<char const> data) -> bool {
     if (lookup_.contains(chunk.chunkId)) {
         return false;
     }
+    rlib_assert(chunk.compressed_size <= RChunk::LIMIT);
+    rlib_assert(chunk.uncompressed_size <= RChunk::LIMIT);
+    rlib_assert(ZSTD_compressBound(chunk.compressed_size) <= RChunk::LIMIT);
     this->add_internal(chunk, data);
     return true;
 }
 
 auto RCache::add_uncompressed(std::span<char const> src, int level, HashType hash_type) -> RChunk::Src {
     rlib_assert(can_write());
+    rlib_assert(src.size() <= RChunk::LIMIT);
+    rlib_assert(ZSTD_compressBound(src.size()) <= RChunk::LIMIT);
     auto id = RChunk::hash(src, hash_type);
     std::lock_guard lock(this->mutex_);
     if (auto c = this->find_internal(id)) {
@@ -59,6 +64,7 @@ auto RCache::add_uncompressed(std::span<char const> src, int level, HashType has
     thread_local Buffer buffer = {};
     rlib_assert(buffer.resize_destroy(ZSTD_compressBound(src.size())));
     auto size = rlib_assert_zstd(ZSTD_compress(buffer.data(), buffer.size(), src.data(), src.size(), level));
+    rlib_assert(size <= RChunk::LIMIT);
     auto chunk = RChunk::Src{};
     chunk.chunkId = id;
     chunk.uncompressed_size = src.size();
