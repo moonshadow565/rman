@@ -118,7 +118,7 @@ auto RLS::read(std::span<char const> src) -> RLS {
             rlib_rethrow(file.name = raw.strings.at(raw_file.name));
             file.version = raw_file.version;
             visited.clear();
-            visited.resize(raw.file_count);
+            visited.resize(raw.folder_count);
             for (auto p = file_parents[f]; p; p = folder_parents[p]) {
                 rlib_assert(!visited[p]);
                 visited[p] = true;
