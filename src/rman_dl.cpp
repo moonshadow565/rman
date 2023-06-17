@@ -128,7 +128,7 @@ struct Main {
 
         cli.manifest = program.get<std::string>("manifest");
         cli.output = program.get<std::string>("output");
-        cli.updatefrommanfiest = program.get<std::string>("--upgrade");
+        cli.updatefrommanfiest = program.get<std::string>("--update");
 
         cli.no_verify = program.get<bool>("--no-verify");
         cli.no_write = program.get<bool>("--no-write");
@@ -181,7 +181,7 @@ struct Main {
         cdn = std::make_unique<RCDN>(cli.cdn, cache.get());
 
         auto skipids = std::unordered_map<std::string, FileID>{};
-        {
+        if (!cli.updatefrommanfiest.empty()) {
             rlib_trace("Update from file: %s", cli.updatefrommanfiest.c_str());
             RFile::read_file(cli.updatefrommanfiest, [&, this](RFile const& rfile) {
                 if (cli.match(rfile)) {
