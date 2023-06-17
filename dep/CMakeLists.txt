@@ -118,7 +118,7 @@ endif()
 FetchContent_Declare(
     miniz
     GIT_REPOSITORY https://github.com/richgel999/miniz.git
-    GIT_TAG        76b3a872855388c735c564905da030f26334f3b3
+    GIT_TAG        293d4db1b7d0ffee9756d035b9ac6f7431ef8492
 )
 
 FetchContent_GetProperties(miniz)

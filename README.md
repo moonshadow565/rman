@@ -110,6 +110,23 @@ Optional arguments:
 ```
 
 ```sh
+Usage: rman-diff [options] outmanifset frommanifest intomanifest 
+
+Diff files in manifest.
+
+Positional arguments:
+outmanifset      	Manifest file to write into. [required]
+frommanifest     	Manifest file to patch from. [required]
+intomanifest     	Manifest file to patch into. [required]
+
+Optional arguments:
+-h --help        	shows help message and exits [default: false]
+-v --version     	prints version information and exits [default: false]
+-l --filter-lang 	Filter: language(none for international files). [default: <not representable>]
+-p --filter-path 	Filter: path with regex match. [default: <not representable>]
+```
+
+```sh
 Usage: rman-dl [options] manifest output 
 
 Downloads or repairs files in manifest.

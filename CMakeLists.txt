@@ -71,6 +71,9 @@ target_link_libraries(rman-ls PRIVATE rlib)
 add_executable(rman-bl src/rman_bl.cpp)
 target_link_libraries(rman-bl PRIVATE rlib)
 
+add_executable(rman-diff src/rman_diff.cpp)
+target_link_libraries(rman-diff PRIVATE rlib)
+
 add_executable(rman-make src/rman_make.cpp)
 target_link_libraries(rman-make PRIVATE rlib)
 
