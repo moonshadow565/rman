@@ -10,6 +10,7 @@ using namespace rlib;
 struct Main {
     struct CLI {
         std::string manifest = {};
+        std::string updatefrommanfiest = {};
         std::string output = {};
         bool no_verify = {};
         bool no_write = {};
@@ -49,6 +50,9 @@ struct Main {
                     return std::regex{value, std::regex::optimize | std::regex::icase};
                 }
             });
+        program.add_argument("-u", "--update")
+            .help("Filter: update from old manifest.")
+            .default_value(std::string(""));
         program.add_argument("--no-verify")
             .help("Force force full without verify.")
             .default_value(false)
@@ -124,6 +128,7 @@ struct Main {
 
         cli.manifest = program.get<std::string>("manifest");
         cli.output = program.get<std::string>("output");
+        cli.updatefrommanfiest = program.get<std::string>("--upgrade");
 
         cli.no_verify = program.get<bool>("--no-verify");
         cli.no_write = program.get<bool>("--no-write");
@@ -175,8 +180,22 @@ struct Main {
 
         cdn = std::make_unique<RCDN>(cli.cdn, cache.get());
 
+        auto skipids = std::unordered_map<std::string, FileID>{};
+        {
+            rlib_trace("Update from file: %s", cli.updatefrommanfiest.c_str());
+            RFile::read_file(cli.updatefrommanfiest, [&, this](RFile const& rfile) {
+                if (cli.match(rfile)) {
+                    skipids[rfile.path] = rfile.fileId;
+                }
+                return true;
+            });
+        }
+
         auto files = std::vector<RFile>{};
         RFile::read_file(cli.manifest, [&, this](RFile& rfile) {
+            if (auto i = skipids.find(rfile.path); i != skipids.cend() &&  i->second == rfile.fileId) {
+                return true;
+            }
             if (cli.match(rfile)) {
                 files.emplace_back(std::move(rfile));
             }

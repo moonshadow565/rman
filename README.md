@@ -140,6 +140,7 @@ Optional arguments:
 -v --version         	prints version information and exits [default: false]
 -l --filter-lang     	Filter by language(none for international files) with regex match. [default: <not representable>]
 -p --filter-path     	Filter by path with regex match. [default: <not representable>]
+-u --update          	Filter: update from old manifest. [default: ""]
 --no-verify          	Force force full without verify. [default: false]
 --no-write           	Do not write to file. [default: false]
 --no-progress        	Do not print progress. [default: false]
