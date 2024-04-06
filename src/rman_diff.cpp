@@ -85,7 +85,7 @@ struct Main {
         std::cerr << "Parse into manifest ..." << std::endl;
         {
             rlib_trace("Manifest file into: %s", cli.intomanifest.c_str());
-            RFile::read_file(cli.frommanifest, [&, this](RFile const& rfile) {
+            RFile::read_file(cli.intomanifest, [&, this](RFile const& rfile) {
                 if (cli.match(rfile)) {
                     if (auto i = fileids.find(rfile.path); i != fileids.end() && i->second == rfile.fileId) {
                         return true;
