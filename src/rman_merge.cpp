@@ -19,6 +19,7 @@ struct Main {
         std::vector<std::string> manifests = {};
         RFile::Match match = {};
         bool strip_chunks = 0;
+        bool with_prefix = {};
     } cli = {};
     std::unique_ptr<RCache> cache = {};
 
@@ -30,6 +31,10 @@ struct Main {
 
         program.add_argument("--no-progress").help("Do not print progress.").default_value(false).implicit_value(true);
         program.add_argument("--strip-chunks").default_value(false).implicit_value(true);
+        program.add_argument("--with-prefix")
+            .help("Prefix file paths with manifest name")
+            .default_value(false)
+            .implicit_value(true);
 
         // Cache options
         program.add_argument("--cache").help("Cache file path.").default_value(std::string{""});
@@ -86,6 +91,7 @@ struct Main {
         };
 
         cli.strip_chunks = program.get<bool>("--strip-chunks");
+        cli.with_prefix = program.get<bool>("--with-prefix");
 
         cli.match.langs = program.get<std::optional<std::regex>>("--filter-lang");
         cli.match.path = program.get<std::optional<std::regex>>("--filter-path");
@@ -105,7 +111,11 @@ struct Main {
 
         std::cerr << "Processing input files ... " << std::endl;
         for (auto const& path : paths) {
+            auto const name = path.filename().replace_extension("").generic_string() + '/';
             RFile::read_file(path, [&, this](RFile& rfile) {
+                if (this->cli.with_prefix) {
+                    rfile.path.insert(rfile.path.begin(), name.begin(), name.end());
+                }
                 if (cli.match(rfile)) {
                     process_file(rfile);
                     writer(std::move(rfile));

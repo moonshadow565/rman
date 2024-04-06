@@ -118,6 +118,7 @@ struct Main {
         bool no_progress = {};
         bool append = {};
         bool strip_chunks = 0;
+        bool with_prefix = {};
         std::size_t chunk_size = 0;
         std::int32_t level = 0;
         std::int32_t level_high_entropy = 0;
@@ -174,6 +175,10 @@ struct Main {
             .implicit_value(true);
         program.add_argument("--no-progress").help("Do not print progress.").default_value(false).implicit_value(true);
         program.add_argument("--strip-chunks").default_value(false).implicit_value(true);
+        program.add_argument("--with-prefix")
+            .help("Prefix file paths with manifest name")
+            .default_value(false)
+            .implicit_value(true);
 
         program.add_argument("--no-ar")
             .help("Regex of disable smart chunkers, can be any of: " + Ar::PROCESSORS_LIST())
@@ -248,6 +253,7 @@ struct Main {
         cli.no_progress = program.get<bool>("--no-progress");
         cli.append = program.get<bool>("--append");
         cli.strip_chunks = program.get<bool>("--strip-chunks");
+        cli.with_prefix = program.get<bool>("--with-prefix");
         cli.level = program.get<std::int32_t>("--level");
         cli.level_high_entropy = program.get<std::int32_t>("--level-high-entropy");
 
@@ -278,8 +284,12 @@ struct Main {
 
         std::cerr << "Processing input manifests ... " << std::endl;
         for (std::uint32_t index = manifests.size(); auto const& path : manifests) {
+            auto const name = path.filename().replace_extension("").generic_string() + '/';
             std::cerr << "MANIFEST: " << path << std::endl;
             RFile::read_file(path, [&, this](RFile& ofile) {
+                if (this->cli.with_prefix) {
+                    ofile.path.insert(ofile.path.begin(), name.begin(), name.end());
+                }
                 if (cli.match(ofile)) {
                     auto nfile = add_file(ofile, outbundle, resume_file, index);
                     writer(std::move(nfile));
