@@ -133,3 +133,37 @@ if(NOT miniz_POPULATED)
         -DMINIZ_DISABLE_ZIP_READER_CRC32_CHECKS=1
     )
 endif()
+
+FetchContent_Declare(
+    lua
+    GIT_REPOSITORY https://github.com/lua/lua.git
+    GIT_TAG        75ea9ccbea7c4886f30da147fb67b693b2624c26 # 5.3.6
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ""
+)
+FetchContent_GetProperties(lua)
+if(NOT lua_POPULATED)
+    FetchContent_Populate(lua)
+    file(GLOB lua_SOURCES "${lua_SOURCE_DIR}/*.c")
+    list(FILTER lua_SOURCES EXCLUDE REGEX ".*lua\\.c$")
+    set_source_files_properties(${lua_SOURCES} PROPERTIES LANGUAGE CXX )
+
+    add_library(lua STATIC ${lua_SOURCES})
+    target_include_directories(lua PUBLIC ${lua_SOURCE_DIR})
+endif()
+
+FetchContent_Declare(
+    sol
+    GIT_REPOSITORY https://github.com/ThePhD/sol2.git
+    GIT_TAG        eba86625b707e3c8c99bbfc4624e51f42dc9e561 # 3.3.0
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND ""
+)
+FetchContent_GetProperties(sol)
+if(NOT sol_POPULATED)
+    FetchContent_Populate(sol)
+    add_library(sol INTERFACE)
+    target_link_libraries(sol INTERFACE lua)
+    target_include_directories(sol INTERFACE ${sol_SOURCE_DIR}/include)
+    target_compile_definitions(sol INTERFACE -DSOL_EXCEPTIONS_SAFE_PROPAGATION=1 -DSOL_USE_CXX_LUA=1)
+endif()
