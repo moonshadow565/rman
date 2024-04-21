@@ -6,6 +6,7 @@ using namespace rlib;
 
 auto Ar::PROCESSORS(bool cdc) noexcept -> std::span<Processor const> {
     static constexpr Processor const instance_smart[] = {
+        {"dyn", &Ar::process_try_dyn},
         {"fsb", &Ar::process_try_fsb},
         {"fsb5", &Ar::process_try_fsb5},
         {"load", &Ar::process_try_load},

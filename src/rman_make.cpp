@@ -44,6 +44,9 @@ struct Main {
             .implicit_value(true);
         program.add_argument("--no-progress").help("Do not print progress.").default_value(false).implicit_value(true);
         program.add_argument("--strip-chunks").default_value(false).implicit_value(true);
+        program.add_argument("--ar-dyn")
+            .help("Dynamic chunker provided from lua script.")
+            .default_value(std::string{""});
         program.add_argument("--cdc")
             .help("Dumb chunking fallback algorithm " + Ar::PROCESSORS_LIST(true))
             .default_value(std::string{"fixed"});
@@ -121,6 +124,7 @@ struct Main {
             .disabled = Ar::PROCESSOR_PARSE(program.get<std::string>("--no-ar")),
             .cdc = Ar::PROCESSOR_PARSE(program.get<std::string>("--cdc"), true),
             .strict = program.get<bool>("--ar-strict"),
+            .ardyn = make_ardyn(program.get<std::string>("--ar-dyn")),
         };
     }
 

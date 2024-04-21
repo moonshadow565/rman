@@ -12,6 +12,14 @@
     } while (false)
 
 namespace rlib {
+    struct ArDyn;
+
+    struct ArDynDeleter {
+        auto operator()(ArDyn* ptr) noexcept -> void;
+    };
+
+    extern auto make_ardyn(fs::path const& init) -> std::unique_ptr<ArDyn, ArDynDeleter>;
+
     struct Ar {
         struct Entry {
             std::size_t offset;
@@ -31,6 +39,7 @@ namespace rlib {
         std::bitset<32> disabled;
         std::uint32_t cdc;
         bool strict;
+        std::unique_ptr<ArDyn, ArDynDeleter> ardyn;
         mutable std::vector<std::string> errors;
 
         static auto PROCESSORS(bool cdc = false) noexcept -> std::span<Processor const>;
@@ -52,6 +61,8 @@ namespace rlib {
         struct ZIP;
 
         auto process(IO const& io, offset_cb cb, Entry const& top_entry) const -> void;
+
+        auto process_try_dyn(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
 
         auto process_try_fsb(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
 

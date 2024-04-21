@@ -18,6 +18,7 @@ add_library(rlib STATIC
     lib/rlib/ar.hpp
     lib/rlib/ar.cpp
     lib/rlib/ar_cdc.cpp
+    lib/rlib/ar_dyn.cpp
     lib/rlib/ar_fsb.cpp
     lib/rlib/ar_fsb5.cpp
     lib/rlib/ar_load.cpp
@@ -54,7 +55,7 @@ add_library(rlib STATIC
 target_include_directories(rlib PUBLIC lib/)
 target_link_libraries(rlib PUBLIC argparse libcurl zstd fmt)
 target_link_libraries(rlib PUBLIC argparse zstd fmt)
-target_link_libraries(rlib PRIVATE json_struct digestpp miniz)
+target_link_libraries(rlib PRIVATE json_struct digestpp miniz lua sol)
 if (WIN32)
     target_sources(rlib INTERFACE
         res/longpath.manifest
