@@ -62,6 +62,9 @@ if (WIN32)
     )
 endif()
 
+add_executable(rman-ar src/rman_ar.cpp)
+target_link_libraries(rman-ar PRIVATE rlib)
+
 add_executable(rman-dl src/rman_dl.cpp)
 target_link_libraries(rman-dl PRIVATE rlib)
 
