@@ -1,6 +1,7 @@
 #pragma once
 #include <cinttypes>
 #include <cstddef>
+#include <cstdint>
 #include <span>
 
 #include "common.hpp"
@@ -49,19 +50,27 @@ namespace rlib {
     };
 
     struct RChunk::Dst::Packed {
+    private:
         std::array<std::uint32_t, 2> chunkId = {};
-        std::uint32_t uncompressed_size : 28 = {};
-        HashType hash_type : 4 = {};
-
+        std::uint32_t packed1 = {};
+        std::uint32_t packed2 ={};
+        // u64 chunkId
+        // u28 uncompressed_size
+        // u4 unused1
+        // u4 hash_type
+        // u28 unused2
+    public:
         constexpr Packed() noexcept = default;
         constexpr Packed(RChunk::Dst const& chunk) noexcept
             : chunkId(std::bit_cast<std::array<std::uint32_t, 2>>(chunk.chunkId)),
-              uncompressed_size(chunk.uncompressed_size),
-              hash_type(chunk.hash_type) {}
+              packed1(chunk.uncompressed_size & 0xFFFFFFF),
+              packed2((uint32_t)chunk.hash_type & 0xFF) {}
+    
         constexpr operator RChunk::Dst() const noexcept {
-            return {{{std::bit_cast<ChunkID>(chunkId), uncompressed_size, 0}, {}, 0}, hash_type, 0};
+            return {{{std::bit_cast<ChunkID>(chunkId), packed1 & 0xFFFFFFF, 0}, {}, 0}, (HashType)(packed2 & 0xFF), 0};
         }
     };
+    static_assert(sizeof(RChunk::Dst::Packed) == 16);
 }
 
 template <>
