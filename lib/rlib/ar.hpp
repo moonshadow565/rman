@@ -45,6 +45,7 @@ namespace rlib {
         struct FSB;
         struct FSB5;
         struct MAC;
+        struct MPQ;
         struct Load;
         struct PE;
         struct WAD;
@@ -62,6 +63,8 @@ namespace rlib {
         auto process_try_mac_exe(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
 
         auto process_try_mac_fat(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
+
+        auto process_try_mpq(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
 
         auto process_try_pe(IO const& io, offset_cb cb, Entry const& top_entry) const -> bool;
 

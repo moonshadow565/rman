@@ -22,6 +22,7 @@ add_library(rlib STATIC
     lib/rlib/ar_fsb5.cpp
     lib/rlib/ar_load.cpp
     lib/rlib/ar_mac.cpp
+    lib/rlib/ar_mpq.cpp
     lib/rlib/ar_pe.cpp
     lib/rlib/ar_wad.cpp
     lib/rlib/ar_wpk.cpp

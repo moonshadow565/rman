@@ -11,6 +11,7 @@ auto Ar::PROCESSORS(bool cdc) noexcept -> std::span<Processor const> {
         {"load", &Ar::process_try_load},
         {"mac_exe", &Ar::process_try_mac_exe},
         {"mac_fat", &Ar::process_try_mac_fat},
+        {"mpq", &Ar::process_try_mpq},
         {"pe", &Ar::process_try_pe},
         {"wad", &Ar::process_try_wad},
         {"wpk", &Ar::process_try_wpk},
