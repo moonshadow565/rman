@@ -64,10 +64,10 @@ namespace rlib {
         constexpr Packed(RChunk::Dst const& chunk) noexcept
             : chunkId(std::bit_cast<std::array<std::uint32_t, 2>>(chunk.chunkId)),
               packed1(chunk.uncompressed_size & 0xFFFFFFF),
-              packed2((uint32_t)chunk.hash_type & 0xFF) {}
+              packed2((uint32_t)chunk.hash_type & 0xF) {}
     
         constexpr operator RChunk::Dst() const noexcept {
-            return {{{std::bit_cast<ChunkID>(chunkId), packed1 & 0xFFFFFFF, 0}, {}, 0}, (HashType)(packed2 & 0xFF), 0};
+            return {{{std::bit_cast<ChunkID>(chunkId), packed1 & 0xFFFFFFF, 0}, {}, 0}, (HashType)(packed2 & 0xF), 0};
         }
     };
     static_assert(sizeof(RChunk::Dst::Packed) == 16);
