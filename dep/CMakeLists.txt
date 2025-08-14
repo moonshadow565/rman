@@ -133,3 +133,14 @@ if(NOT miniz_POPULATED)
         -DMINIZ_DISABLE_ZIP_READER_CRC32_CHECKS=1
     )
 endif()
+
+FetchContent_Declare(
+    blake3
+    GIT_REPOSITORY https://github.com/BLAKE3-team/BLAKE3.git
+    GIT_TAG        df610ddc3b93841ffc59a87e3da659a15910eb46
+)
+FetchContent_GetProperties(blake3)
+if(NOT blake3_POPULATED)
+    FetchContent_Populate(blake3)
+    add_subdirectory(${blake3_SOURCE_DIR}/c ${blake3_BINARY_DIR})
+endif()

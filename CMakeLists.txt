@@ -54,7 +54,7 @@ add_library(rlib STATIC
 target_include_directories(rlib PUBLIC lib/)
 target_link_libraries(rlib PUBLIC argparse libcurl zstd fmt)
 target_link_libraries(rlib PUBLIC argparse zstd fmt)
-target_link_libraries(rlib PRIVATE json_struct digestpp miniz)
+target_link_libraries(rlib PRIVATE json_struct digestpp miniz blake3)
 if (WIN32)
     target_sources(rlib INTERFACE
         res/longpath.manifest

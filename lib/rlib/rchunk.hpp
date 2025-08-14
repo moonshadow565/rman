@@ -16,6 +16,7 @@ namespace rlib {
         SHA512,
         SHA256,
         RITO_HKDF,
+        BLAKE3,
     };
 
     struct RChunk {

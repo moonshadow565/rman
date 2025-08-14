@@ -243,7 +243,7 @@ private:
             auto unk3 = param_table[3].as<std::uint32_t>();  // ?? < max_uncompressed
             auto max_uncompressed = param_table[4].as<std::uint32_t>();
             rlib_assert(hash_type != HashType::None);
-            rlib_assert(hash_type <= HashType::RITO_HKDF);
+            rlib_assert(hash_type <= HashType::BLAKE3);
             lookup_params[id++] = {
                 .unk0 = unk0,
                 .hash_type = hash_type,

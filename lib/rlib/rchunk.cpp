@@ -6,6 +6,7 @@
 
 #include "common.hpp"
 #include "iofile.hpp"
+#include "blake3.h"
 
 using namespace rlib;
 
@@ -55,6 +56,14 @@ auto RChunk::hash(std::span<char const> data, HashType type) noexcept -> ChunkID
             sha256().absorb((std::uint8_t const*)data.data(), data.size()).digest(buffer.data(), 32);
             return hkdf(buffer);
         }
+        case HashType::BLAKE3: {
+            auto buffer = std::array<std::uint8_t, 8>{};
+            blake3_hasher hasher{};
+            blake3_hasher_init(&hasher);
+            blake3_hasher_update(&hasher, data.data(), data.size());
+            blake3_hasher_finalize(&hasher, buffer.data(), buffer.size());
+            return std::bit_cast<ChunkID>(buffer);
+        }
         default:
             return {};
     }
@@ -74,6 +83,9 @@ auto RChunk::hash_type(std::span<char const> data, ChunkID chunkId) -> HashType 
     if (hkdf(buffer) == chunkId) {
         return HashType::RITO_HKDF;
     }
+
+    if (RChunk::hash(data, HashType::BLAKE3) == chunkId)
+        return HashType::BLAKE3;
 
     sha512().absorb((std::uint8_t const*)data.data(), data.size()).digest(buffer.data(), 64);
     if (std::memcmp(buffer.data(), &chunkId, 8) == 0) {
