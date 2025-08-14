@@ -287,7 +287,7 @@ private:
         for (Table const& file_table : file_tables) {
             auto fileId = file_table[0].as<FileID>();
             auto dirId = file_table[1].as<std::uint64_t>();
-            auto size = file_table[2].as<std::uint32_t>();
+            auto size = file_table[2].as<std::uint64_t>();
             auto name = file_table[3].as<std::string>();
             auto locale_flags = file_table[4].as<std::uint64_t>();
             auto unk5 = file_table[5].as<std::uint8_t>();  // ???, unk size
