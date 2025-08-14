@@ -3,6 +3,7 @@
 #include <rlib/common.hpp>
 #include <rlib/iofile.hpp>
 #include <rlib/rbundle.hpp>
+#include <thread>
 
 using namespace rlib;
 
@@ -12,6 +13,7 @@ struct Main {
         bool no_hash = {};
         bool no_extract = {};
         bool no_progress = {};
+        std::uint32_t parallel = {};
     } cli = {};
 
     auto parse_args(int argc, char** argv) -> void {
@@ -28,13 +30,16 @@ struct Main {
             .help("Do not print progress to cerr.")
             .default_value(false)
             .implicit_value(true);
-
+        program.add_argument("--parallel")
+            .help("Number of threads to use.")
+            .default_value(std::uint32_t{0})
+            .action([](std::string const& value) -> std::uint32_t { return (std::uint32_t)std::stoul(value); });
         program.parse_args(argc, argv);
 
         cli.no_hash = program.get<bool>("--no-extract");
         cli.no_extract = program.get<bool>("--no-hash");
         cli.no_progress = program.get<bool>("--no-progress");
-
+        cli.parallel = program.get<uint32_t>("--parallel");
         cli.inputs = program.get<std::vector<std::string>>("input");
     }
 
@@ -42,20 +47,39 @@ struct Main {
         std::cerr << "Collecting input bundles ... " << std::endl;
         auto paths = collect_files(cli.inputs, [](fs::path const& p) { return p.extension() == ".bundle"; });
         std::cerr << "Processing input bundles ... " << std::endl;
-        for (std::uint32_t index = paths.size(); auto const& path : paths) {
-            verify_bundle(path, index--);
+
+        const auto parallel = cli.parallel;
+        if (parallel == 0) {
+            for (std::uint32_t index = paths.size(); auto const& path : paths) {
+                verify_bundle(path, index--);
+            }
+            return;
         }
+
+        std::vector<std::thread> threads{};
+        threads.reserve(cli.parallel);
+        std::atomic_size_t done = 0;
+        std::size_t total = paths.size();
+        for (size_t t = 0; t < cli.parallel; ++t) {
+            threads.emplace_back([this, t, total, parallel, &paths, &done]() {
+                for (size_t i = t; i < total; i += parallel) {
+                    this->verify_bundle(paths[i], 0, true);
+                }
+            });
+        }
+        for (auto& t : threads) t.join();
     }
 
-    auto verify_bundle(fs::path const& path, std::uint32_t index) -> void {
+    auto verify_bundle(fs::path const& path, std::uint32_t index, bool mt = false) -> void {
         try {
             rlib_trace("path: %s", path.generic_string().c_str());
-            std::cout << "START:" << path.filename().generic_string() << std::endl;
+            puts(("START: " + path.filename().generic_string()).c_str());
             auto infile = IO::File(path, IO::READ);
             auto bundle = RBUN::read(infile, true);
             {
                 std::uint64_t offset = 0;
-                progress_bar p("VERIFIED", cli.no_progress, index, offset, bundle.toc_offset);
+                auto p = std::optional<progress_bar>{};
+                if (!mt) p.emplace("VERIFIED", cli.no_progress, index, offset, bundle.toc_offset);
                 for (auto const& chunk : bundle.chunks) {
                     if (!cli.no_extract) {
                         auto src = infile.copy(offset, chunk.compressed_size);
@@ -71,12 +95,12 @@ struct Main {
                         rlib_assert(zstd_frame_decompress_size({zstd_header, header_size}) == chunk.uncompressed_size);
                     }
                     offset += chunk.compressed_size;
-                    p.update(offset);
+                    if (p) p->update(offset);
                 }
             }
-            std::cout << "OK!" << std::endl;
+            puts(("OK: " + path.filename().generic_string()).c_str());
         } catch (std::exception const& e) {
-            std::cout << "FAIL!" << std::endl;
+            puts(("FAIL: " + path.filename().generic_string()).c_str());
             std::cerr << e.what() << std::endl;
             for (auto const& error : error_stack()) {
                 std::cerr << error << std::endl;
