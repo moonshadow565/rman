@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <iomanip>
 #include <iostream>
+#include <fstream>
 
 #include "buffer.hpp"
 
@@ -112,6 +113,17 @@ auto rlib::collect_files(std::vector<std::string> const& inputs,
     if (inputs.size() == 1 && inputs.back() == "-") {
         std::string line;
         while (std::getline(std::cin, line)) {
+            if (line.empty()) {
+                continue;
+            }
+            rlib_trace("input = %s", line.c_str());
+            rlib_assert(fs::exists(line));
+            paths.push_back(line);
+        }
+    } else if (inputs.size() == 1 && inputs.back().starts_with("@")) {
+        std::ifstream file(inputs.back().substr(1));
+        std::string line;
+        while (std::getline(file, line)) {
             if (line.empty()) {
                 continue;
             }
