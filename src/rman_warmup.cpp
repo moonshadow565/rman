@@ -5,6 +5,7 @@
 #include <rlib/rcdn.hpp>
 #include <rlib/rfile.hpp>
 #include <rlib/rmanifest.hpp>
+#include <execution>
 
 using namespace rlib;
 
@@ -96,7 +97,7 @@ struct Main {
             .help("Batch size to download before scanning more manifests.")
             .default_value(std::uint32_t{1'000'000})
             .action([](std::string const& value) -> std::uint32_t {
-                return std::clamp((std::uint32_t)std::stoul(value), std::uint32_t{1u}, std::uint32_t{1u << 31});
+                return std::clamp((std::uint32_t)std::stoul(value), std::uint32_t{0u}, std::uint32_t{1u << 31});
             });
 
         // Migrated from.
@@ -157,27 +158,43 @@ struct Main {
             auto paths =
                 rlib::collect_files(cli.inputs, [](fs::path const& p) { return p.extension() == ".manifest"; });
             index = paths.size();
-            progress_bar p("COLLECT", cli.no_progress, index, 0, index);
+            progress_bar p("COLLECT", cli.no_progress, index, 0, index * MiB);
 
             std::unordered_map<ChunkID, RChunk::Src> collected;
-            for (size_t done = 0; auto const& path : paths) {
-                rlib_trace("Manifest file: %s", path.generic_string().c_str());
+            size_t done = 0;
+            if (cli.batch_size == 0) {
+                std::mutex m;
+                std::for_each(std::execution::par_unseq, paths.begin(), paths.end(), [&](const auto& path) {
+                    rlib_trace("Manifest file: %s", path.generic_string().c_str());
+                    auto chunks = RMAN::read_chunks_file(path);
+                    chunks = cache->missing(std::move(chunks));
 
-                auto chunks = RMAN::read_chunks_file(path);
-                chunks = cache->missing(std::move(chunks));
-                collected.merge(std::move(chunks));
+                    {
+                        std::lock_guard lock_guard(m);
+                        collected.merge(std::move(chunks));
+                        p.update(++done * MiB);
+                    }
+                });
+            } else {
+                for (auto const& path : paths) {
+                    rlib_trace("Manifest file: %s", path.generic_string().c_str());
+                    auto chunks = RMAN::read_chunks_file(path);
 
-                p.update(++done);
-                if (collected.size() > cli.batch_size) {
-                    transform(collected, queued);
-                    download(queued, index);
+                    chunks = cache->missing(std::move(chunks));
+                    collected.merge(std::move(chunks));
+
+                    p.update(++done * MiB);
+                    if (collected.size() > cli.batch_size) {
+                        transform(collected, queued);
+                        download(queued, index);
+                    }
+                    --index;
                 }
-                --index;
             }
 
             transform(collected, queued);
         }
-        download(queued);
+        download(queued, index);
 
         std::cout << "ALL DONE!" << std::endl;
     }
