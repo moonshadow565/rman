@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.20..4.0)
 
 # This is need on some linuxes because threading is "optional"
 find_package (Threads REQUIRED)
@@ -11,7 +11,7 @@ include(FetchContent)
 FetchContent_Declare(
     curl
     GIT_REPOSITORY https://github.com/curl/curl.git
-    GIT_TAG        curl-7_83_1
+    GIT_TAG        046209e561b7e9b5aab1aef7daebf29ee6e6e8c7 # curl-7_88_1
 )
 FetchContent_GetProperties(curl)
 if(NOT curl_POPULATED)
@@ -43,7 +43,7 @@ endif()
 FetchContent_Declare(
     zstd
     GIT_REPOSITORY https://github.com/facebook/zstd.git
-    GIT_TAG        v1.5.2
+    GIT_TAG        e47e674cd09583ff0503f0f6defd6d23d8b718d3 # v1.5.2
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
 )
@@ -98,7 +98,7 @@ endif()
 FetchContent_Declare(
     fmt
     GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-    GIT_TAG        8.1.1
+    GIT_TAG        a33701196adfad74917046096bf5a2aa0ab0bb50 # 9.1.0
 )
 FetchContent_MakeAvailable(fmt)
 
@@ -118,7 +118,7 @@ endif()
 FetchContent_Declare(
     miniz
     GIT_REPOSITORY https://github.com/richgel999/miniz.git
-    GIT_TAG        293d4db1b7d0ffee9756d035b9ac6f7431ef8492
+    GIT_TAG        77d0dce8627735138c51770d1799a1ef48f2117d # 3.1.2
 )
 
 FetchContent_GetProperties(miniz)
@@ -137,7 +137,7 @@ endif()
 FetchContent_Declare(
     blake3
     GIT_REPOSITORY https://github.com/BLAKE3-team/BLAKE3.git
-    GIT_TAG        df610ddc3b93841ffc59a87e3da659a15910eb46
+    GIT_TAG        f3149ec5bb5449af877ba20377a11008ff499fa2 # 1.8.7
 )
 FetchContent_GetProperties(blake3)
 if(NOT blake3_POPULATED)

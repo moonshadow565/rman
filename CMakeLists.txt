@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.20..4.0)
 
 project(rman LANGUAGES C CXX)
 
@@ -91,6 +91,9 @@ target_link_libraries(rman-chk PRIVATE rlib)
 
 add_executable(rman-remake src/rman_remake.cpp)
 target_link_libraries(rman-remake PRIVATE rlib)
+
+add_executable(rman-warmup src/rman_warmup.cpp)
+target_link_libraries(rman-warmup PRIVATE rlib)
 
 add_executable(rbun-chk src/rbun_chk.cpp)
 target_link_libraries(rbun-chk PRIVATE rlib)
