@@ -177,7 +177,7 @@ struct RMAN::Raw {
     std::vector<RBUN> bundles;
     std::vector<RFile> files;
 
-    auto parse(std::span<char const> src) && -> RMAN {
+    auto parse(std::span<char const> src) && -> Raw&& {
         this->parse_header(src);
         auto body = zstd_decompress(src.subspan(header.offset, header.length), header.body_length);
         auto offset = Offset{body.data(), 0, (std::int32_t)body.size()};
@@ -188,12 +188,18 @@ struct RMAN::Raw {
         // this->parse_keys(body_table[4].as<std::vector<Table>>());
         this->parse_bundles(body_table[0].as<std::vector<Table>>());
         this->parse_files(body_table[2].as<std::vector<Table>>());
+        return std::move(*this);
+    }
+
+    auto to_man() && -> RMAN {
         return RMAN{
             .manifestId = std::move(this->header.manifestId),
             .files = std::move(this->files),
             .bundles = std::move(this->bundles),
         };
     }
+
+    auto to_lut() && -> std::unordered_map<ChunkID, RChunk::Src> { return std::move(this->lookup_chunk); }
 
 private:
     auto parse_header(std::span<char const> src) -> void {
@@ -355,11 +361,22 @@ private:
 
 auto RMAN::read(std::span<char const> data) -> RMAN {
     rlib_assert(data.size() >= 5);
-    return Raw{}.parse(data);
+    return Raw{}.parse(data).to_man();
 }
 
 auto RMAN::read_file(fs::path const& path) -> RMAN {
     auto infile = IO::MMap(path, IO::READ);
     auto data = infile.copy(0, infile.size());
     return RMAN::read(data);
+}
+
+auto RMAN::read_chunks(std::span<char const> data) -> std::unordered_map<ChunkID, RChunk::Src> {
+    rlib_assert(data.size() >= 5);
+    return Raw{}.parse(data).to_lut();
+}
+
+auto RMAN::read_chunks_file(fs::path const& path) -> std::unordered_map<ChunkID, RChunk::Src> {
+    auto infile = IO::MMap(path, IO::READ);
+    auto data = infile.copy(0, infile.size());
+    return RMAN::read_chunks(data);
 }

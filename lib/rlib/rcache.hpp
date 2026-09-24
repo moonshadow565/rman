@@ -32,6 +32,12 @@ namespace rlib {
 
         auto contains(ChunkID chunkId) const noexcept -> bool;
 
+        auto missing(std::vector<RChunk> chunks) const -> std::vector<RChunk>;
+
+        auto missing(std::unordered_map<ChunkID, RChunk::Src> chunks) const -> std::unordered_map<ChunkID, RChunk::Src>;
+
+        auto missing(std::unordered_map<ChunkID, RChunk::Dst> chunks) const -> std::unordered_map<ChunkID, RChunk::Dst>;
+
         auto get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb read) const -> std::vector<RChunk::Dst>;
 
         auto get_into(RChunk const& chunk, std::span<char> dst) const -> bool;

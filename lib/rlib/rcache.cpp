@@ -85,6 +85,26 @@ auto RCache::contains(ChunkID chunkId) const noexcept -> bool {
     return lookup_.contains(chunkId);
 }
 
+auto RCache::missing(std::vector<RChunk> chunks) const -> std::vector<RChunk> {
+    std::shared_lock lock(this->mutex_);
+    std::erase_if(chunks, [this](RChunk const& chunk) { return lookup_.contains(chunk.chunkId); });
+    return chunks;
+}
+
+auto RCache::missing(std::unordered_map<ChunkID, RChunk::Src> chunks) const
+    -> std::unordered_map<ChunkID, RChunk::Src> {
+    std::shared_lock lock(this->mutex_);
+    std::erase_if(chunks, [this](auto const& kvp) { return lookup_.contains(kvp.first); });
+    return chunks;
+}
+
+auto RCache::missing(std::unordered_map<ChunkID, RChunk::Dst> chunks) const
+    -> std::unordered_map<ChunkID, RChunk::Dst> {
+    std::shared_lock lock(this->mutex_);
+    std::erase_if(chunks, [this](auto const& kvp) { return lookup_.contains(kvp.first); });
+    return chunks;
+}
+
 auto RCache::get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) const -> std::vector<RChunk::Dst> {
     std::shared_lock lock(this->mutex_);
     auto f = chunks.end();

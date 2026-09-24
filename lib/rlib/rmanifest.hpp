@@ -23,6 +23,8 @@ namespace rlib {
         static auto read(std::span<char const> data) -> RMAN;
         static auto read_file(fs::path const& path) -> RMAN;
 
+        static auto read_chunks(std::span<char const> data) -> std::unordered_map<ChunkID, RChunk::Src>;
+        static auto read_chunks_file(fs::path const& path) -> std::unordered_map<ChunkID, RChunk::Src>;
     private:
         struct Raw;
     };
