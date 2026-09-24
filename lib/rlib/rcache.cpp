@@ -10,6 +10,8 @@
 
 using namespace rlib;
 
+static std::atomic_uint64_t instance_lock{};
+
 static constexpr auto rcache_file_flags(bool readonly) -> IO::Flags {
     return (readonly ? IO::READ : IO::WRITE) | IO::NO_INTERUPT | IO::NO_OVERGROW;
 }
@@ -20,6 +22,14 @@ static auto rcache_file_path(fs::path base, std::size_t index) -> fs::path {
 }
 
 RCache::RCache(Options const& options) : options_(options) {
+    for (size_t i = 0; i != 64; ++i) {
+        if (!(instance_lock.fetch_or(uint64_t{1} << i) & (uint64_t{1} << i))) {
+            instance_id_ = i;
+            break;
+        }
+    }
+    rlib_assert(instance_id_.has_value());
+
     if (!options_.readonly) {
         options_.flush_size = std::max(1 * MiB, options_.flush_size);
         options_.max_size = std::max(options_.flush_size * 2, options_.max_size) - options_.flush_size;
@@ -33,7 +43,12 @@ RCache::RCache(Options const& options) : options_(options) {
     }
 }
 
-RCache::~RCache() { this->flush_internal(); }
+RCache::~RCache() {
+    this->flush_internal();
+    if (instance_id_.has_value()) {
+        instance_lock.fetch_and(~(uint64_t{1} << *instance_id_));
+    }
+}
 
 auto RCache::add(RChunk const& chunk, std::span<char const> data) -> bool {
     if (!can_write()) {
@@ -61,7 +76,8 @@ auto RCache::add_uncompressed(std::span<char const> src, int level, HashType has
         rlib_assert(c->uncompressed_size == src.size());
         return *c;
     }
-    thread_local Buffer buffer = {};
+    thread_local Buffer buffer_[64] = {};
+    auto& buffer = buffer_[*instance_id_];
     rlib_assert(buffer.resize_destroy(ZSTD_compressBound(src.size())));
     auto size = rlib_assert_zstd(ZSTD_compress(buffer.data(), buffer.size(), src.data(), src.size(), level));
     rlib_assert(size <= RChunk::LIMIT);
@@ -105,7 +121,7 @@ auto RCache::missing(std::unordered_map<ChunkID, RChunk::Dst> chunks) const
     return chunks;
 }
 
-auto RCache::get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) const -> std::vector<RChunk::Dst> {
+auto RCache::get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data, bool raw) const -> std::vector<RChunk::Dst> {
     std::shared_lock lock(this->mutex_);
     auto f = chunks.end();
     auto const e = chunks.end();
@@ -124,7 +140,8 @@ auto RCache::get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb on_data) 
     auto last_data = std::span<char const>{};
     for (auto i = f; i != e; ++i) {
         if (last_id == ChunkID::None || i->chunkId != last_id) {
-            last_data = zstd_decompress(this->get_internal(*i), i->uncompressed_size);
+            auto raw_data = this->get_internal(*i);
+            last_data = raw ? raw_data : zstd_decompress(raw_data, i->uncompressed_size);
             last_id = i->chunkId;
         }
         on_data(*i, last_data);
@@ -180,7 +197,8 @@ auto RCache::get_internal(RChunk::Src const& chunk) const -> std::span<char cons
         thread_local struct Lazy {
             BundleID bundleId = {};
             std::unique_ptr<IO::MMap> io = {};
-        } lazy = {};
+        } lazy_[64] = {};
+        auto& lazy = lazy_[*instance_id_];
         rlib_assert(chunk.bundleId != BundleID::None);
         if (lazy.bundleId != chunk.bundleId) {
             auto path = fmt::format("{}/{}.bundle", options_.path, chunk.bundleId);

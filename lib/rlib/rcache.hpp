@@ -38,7 +38,7 @@ namespace rlib {
 
         auto missing(std::unordered_map<ChunkID, RChunk::Dst> chunks) const -> std::unordered_map<ChunkID, RChunk::Dst>;
 
-        auto get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb read) const -> std::vector<RChunk::Dst>;
+        auto get(std::vector<RChunk::Dst> chunks, RChunk::Dst::data_cb read, bool raw = false) const -> std::vector<RChunk::Dst>;
 
         auto get_into(RChunk const& chunk, std::span<char> dst) const -> bool;
 
@@ -59,6 +59,7 @@ namespace rlib {
         std::vector<std::unique_ptr<IO>> files_;
         std::unordered_map<ChunkID, RChunk::Src> lookup_ = {};
         mutable std::shared_mutex mutex_;
+        std::optional<uint8_t> instance_id_ = std::nullopt;
 
         auto load_file_internal_read_write() -> void;
 

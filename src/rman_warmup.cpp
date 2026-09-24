@@ -16,9 +16,11 @@ struct Main {
         RCache::Options cache = {};
         RCache::Options mirror = {};
         RCDN::Options cdn = {};
+        std::string migrate = {};
     } cli = {};
     std::unique_ptr<RCache> cache = {};
     std::unique_ptr<RCDN> cdn = {};
+    std::unique_ptr<RCache> migrate = {};
 
     auto parse_args(int argc, char** argv) -> void {
         argparse::ArgumentParser program(fs::path(argv[0]).filename().generic_string());
@@ -97,6 +99,9 @@ struct Main {
                 return std::clamp((std::uint32_t)std::stoul(value), std::uint32_t{1u}, std::uint32_t{1u << 31});
             });
 
+        // Migrated from.
+        program.add_argument("--migrate").help("Old cache/bundle file path.").default_value(std::string(""));
+
         program.add_argument("input").help("Manifest file(s) or folder(s) to read from.").remaining().required();
 
         program.parse_args(argc, argv);
@@ -128,12 +133,23 @@ struct Main {
 
         cli.batch_size = program.get<std::uint32_t>("--batch-size");
 
+        cli.migrate = program.get<std::string>("--migrate");
+
         cli.inputs = program.get<std::vector<std::string>>("input");
     }
 
     auto run() -> void {
         cache = std::make_unique<RCache>(cli.cache);
         cdn = std::make_unique<RCDN>(cli.cdn, cache.get());
+        if (!cli.migrate.empty()) {
+            migrate = std::make_unique<RCache>(RCache::Options{
+                .path = cli.migrate,
+                .readonly = true,
+                .newonly = true,
+                .flush_size = 32 * MiB,
+                .max_size = 4 * GiB,
+            });
+        }
 
         std::vector<RChunk::Dst> queued;
         size_t index = 0;
@@ -172,13 +188,27 @@ private:
 
         size_t total = 0;
         size_t done = 0;
-        for (const auto& q : queued) total += q.uncompressed_size;
+        for (const auto& q : queued) total += q.compressed_size;
 
-        progress_bar p("DOWNLOAD", cli.no_progress, index, 0, total);
-        queued = cdn->get(std::move(queued), [&](RChunk::Dst const&, std::span<char const> d) {
-            done += d.size();
-            p.update(done);
-        });
+        if (migrate) {
+            progress_bar p("MIGRATE", cli.no_progress, index, done, total);
+            queued = migrate->get(
+                std::move(queued),
+                [&](RChunk::Dst const& c, std::span<char const> data) {
+                    cache->add(c, data);
+                    done += c.compressed_size;
+                    p.update(done);
+                },
+                true);
+        }
+
+        if (!queued.empty()) {
+            progress_bar p("DOWNLOAD", cli.no_progress, index, done, total);
+            queued = cdn->get(std::move(queued), [&](RChunk::Dst const& c, std::span<char const>) {
+                done += c.compressed_size;
+                p.update(done);
+            });
+        }
 
         if (!queued.empty()) {
             std::cout << "FAIL " << queued.size() << std::endl;
